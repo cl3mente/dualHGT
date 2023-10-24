@@ -2,6 +2,8 @@ from Bio import Phylo, SeqIO
 from io import StringIO
 import subprocess as sp
 import os
+import itertools
+import pandas as pd
 
 protein_filepath = "data/data/protein" # il percorso del file in input con le sequenze FASTA
 orthofinder = "OrthoFinder/orthofinder" # il percorso dove è installato orthofinder
@@ -28,21 +30,33 @@ if p1.returncode == 0:
 #   retrieving distances   #
 ############################
 
-"""
-for path, names, files in os.walk(orthofinder):
-    if "SpeciesTree_rooted.txt" in files:
-        tree = os.path.join(path, "SpeciesTree_rooted.txt") # il percorso dell'output di OrthoFinder con l'albero filogenetico
 
-"""
-if True: # un esempio di Newick phylogenetic tree per fare una prova
+
+GeneTreesPath = "C:\Orthofinder\Results_Oct20\Gene_Trees" #directory Gene_Trees dall'output di Orthofinder
+
+trees = []
+for path, names, files in os.walk(GeneTreesPath):
+    for genetree in files:
+        path_2 = os.path.join(path + "\\" + genetree)
+        trees.append(path_2)
+
+#in `trees` ci sono tutti i file Gene Tree
+        
+
+distances = []
+for i in trees:
+    genTree = Phylo.read(i, "newick")
+    clades = list(genTree.get_terminals())
+    combs = list(itertools.combinations(clades, 2))
     
-    #L'output di orthofinder è una stringa come questa dove sono codificati i nodi dell'albero e le bootstrap distances
-    tree = "(Mycoplasma_hyopneumoniae:0.235223,(Mycoplasma_agalactiae:0.457015,(Mycoplasma_genitalium:0.453747,Mycoplasma_gallisepticum:0.414629)0.958955:0.381412)1:0.235223);"
-    tree = StringIO(tree)
+    for comb in combs:
+        name1 = comb[0].name
+        name2 = comb[1].name
+        dist = genTree.distance(name1, name2)
+        distances.append((name1, name2, dist))
 
 
-genTree = Phylo.read(tree, "newick")
-Phylo.draw_ascii(genTree)
 
-for clade in genTree.depths():
-    print(clade.name, clade.branch_length)
+#in `distances` ci sono tutte le distanze tra le sequenze
+distMatrix = pd.DataFrame(distances)
+print(distMatrix)
