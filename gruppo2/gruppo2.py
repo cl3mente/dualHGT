@@ -6,53 +6,55 @@ import itertools as it
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import binascii
 
 
 def distPlot(df):
     plt.hist(df[2], bins=100) 
     # questa funzione crea un istogramma delle distanze
 
-protein_filepath = "cl3mente/PlantPath2023/data/data/protein" # il percorso del file in input con le sequenze FASTA
-orthofinder = "OrthoFinder/orthofinder" # il percorso dove è installato orthofinder
-# speciesNames = [x.lstrip(".") for x in os.listdir(protein_filepath)] # lista dei nomi dei file nella cartella protein
-
-speciesNames = ["Mycoplasma_genitalium", "Mycoplasma_gallisepticum", "Mycoplasma_hyopneumoniae", "Mycoplasma_agalactiae"]
-# prova Temporaneo 
-
-
-"""
-"for f in *fa ; do python ~/orthofinder_tutorial/OrthoFinder/tools/primary_transcript.py $f ; done" 
-#comando preso dalla guida di orthofinder per velocizzare la run. devo usare primary_transcript.py che è nella cartella orthofinder
-"""
-
 #######################################################################################################################################
 # ORTHOFINDER RUN                                                                                                                     #
 # da aggiustare                                                                                                                       #
 #######################################################################################################################################
 
-"""
-p1 = sp.Popen([orthofinder, "-f", protein_filepath]) # QUI inizia il comando che fa partire orthofinder
-p1.wait() # aspetta che il comando finisca
-if p1.returncode == 0:
-    print("OrthoFinder run successful") # se il comando è andato a buon fine stampa questo messaggio
-"""
-    
+# generate a random code for a new folder in which orthofinder will store the results
+def orthoResults(inputPath, ofPath):
+    randomCode = binascii.hexlify(os.urandom(3)).decode('utf8')
+    resultsFolder = inputPath + '/' + randomCode
+
+    p1 = sp.run([ofPath, "-f", inputPath, "-o", resultsFolder]) # QUI inizia il comando che fa partire orthofinder
+    p1.wait() # aspetta che il comando finisca
+    if p1.returncode == 0: # se il comando è andato a buon fine stampa questo messaggio
+        print("OrthoFinder run successful")
+    return resultsFolder
+
 
 ########################################################################################################################################
 # creating distMatrix                                                                                                                  #
 # retrieving distances                                                                                                                 #
 ########################################################################################################################################
 
-GeneTreesPath = "C:\Orthofinder\Results_Oct20\Gene_Trees" #directory Gene_Trees dall'output di Orthofinder
-#TEMPORANEO: da aggiustare in modo che funzioni con il flusso di dati output in arrivo da Orthofinder
+# getSpNames() è una funzione che legge il file SpeciesTree_rooted.txt
+def getSpNames(ResultsPath):
+    with open(ResultsPath + "\Species_Tree\SpeciesTree_rooted.txt", "r") as f:
 
+        speciesTree = f.read()
+        speciesTree = Phylo.read(StringIO(speciesTree), "newick")
+        speciesNames = [clade.name for clade in speciesTree.get_terminals()]
+        
+        # speciesNames è una lista di stringhe con i nomi delle specie
+        # speciesNames = ["Mycoplasma_genitalium", "Mycoplasma_gallisepticum", "Mycoplasma_hyopneumoniae", "Mycoplasma_agalactiae"]
+
+        return speciesNames
+    
 # getDistMatrix() restituisce un df con tutte le distanze tra i geni
 # input: la directory in cui si trovano i file gene_tree.txt
-def getDistMatrix(GeneTreesPath):
+def getDistMatrix(Path):
 
     # creo `trees`: contiene tutte le directory (path) dei file gene_tree.txt
     trees = []
-    for path, names, files in os.walk(GeneTreesPath):
+    for path, names, files in os.walk(Path):
         for genetree in files:
             path_2 = os.path.join(path + "\\" + genetree)
             trees.append(path_2) 
@@ -77,6 +79,7 @@ def getDistMatrix(GeneTreesPath):
     # creo un dataframe da `distances`
     distMatrix = pd.DataFrame(distances,
         columns = ["gene1", "gene2", "dist"])
+    
 
     """ 
     distmatrix ha questo aspetto:
@@ -87,7 +90,6 @@ def getDistMatrix(GeneTreesPath):
 
     return distMatrix
 
-
 # splitMatrix() è una funzione che divide distMatrix in diversi df
 # input: distMatrix (che è anche l'output di getDistMatrix())
 # ciascun df contiene le distanze tra gli omologhi solo di due specie
@@ -96,9 +98,9 @@ def getDistMatrix(GeneTreesPath):
 # INFO: in questa funzione si usa `speciesNames`, da implementare
 # serve una funzione tipo "getSpNames()" che legga i nomi dei file .fa
 # e restituisce una lista di stringhe con i nomi delle specie
-def splitMatrix(distMatrix):
+def splitMatrix(distMatrix, ResultPath):
     comparisons = []
-    for comb in list(it.combinations(speciesNames, 2)): 
+    for comb in list(it.combinations(getSpNames(ResultPath), 2)): 
         #  per ogni combinazione di 2 specie 
         # (in nomi li prendo dai file stessi. da aggiustare 
         # (attualmente li prende perchè glieli ho scritti io in cima al codice))
@@ -159,6 +161,20 @@ def getHGT(comp):
 
 
 if __name__ == "__main__":
-    distMatrix = getDistMatrix(GeneTreesPath)
-    for c in splitMatrix(distMatrix):
+
+    inputPath = "C:\Orthofinder\faino_prova_proteomi\protein" # il percorso del file in input con le sequenze FASTA
+    ofPath = "OrthoFinder/orthofinder" # il percorso dove è installato orthofinder
+
+    ResultsPath = orthoResults(inputPath, ofPath)
+
+    """
+    "for f in *fa ; do python ~/orthofinder_tutorial/OrthoFinder/tools/primary_transcript.py $f ; done" 
+    # comando preso dalla guida di orthofinder per velocizzare la run. devo usare primary_transcript.py che è nella cartella orthofinder
+    """
+    #TEMPORANEO, da aggiustare con l'output della OF run
+    GeneTreesPath = ResultsPath + "\Gene_Trees" 
+    SpeciesTreesPath = ResultsPath + "\Species_Tree" #directory Species_Trees dall'output di Orthofinder
+
+    distMatrix = getDistMatrix(ResultsPath + "\Gene_Trees")
+    for c in splitMatrix(distMatrix, ResultsPath):
         getHGT(c)
