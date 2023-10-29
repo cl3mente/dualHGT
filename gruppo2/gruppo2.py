@@ -8,6 +8,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import binascii
 
+inputPath = "/mnt/c/Orthofinder/faino_prova_proteomi/protein" # il percorso del file in input con le sequenze FASTA
+ofPath = "/OrthoFinder/orthofinder" # il percorso dove è installato orthofinder
 
 def distPlot(df):
     plt.hist(df[2], bins=100) 
@@ -20,15 +22,22 @@ def distPlot(df):
 
 # generate a random code for a new folder in which orthofinder will store the results
 def orthoResults(inputPath, ofPath):
+
+    # generate a random hex code
     randomCode = binascii.hexlify(os.urandom(3)).decode('utf8')
+    # assign it to the folder var, later pass it to the orthofinder command
     resultsFolder = inputPath + '/' + randomCode
 
-    p1 = sp.run([ofPath, "-f", inputPath, "-o", resultsFolder]) # QUI inizia il comando che fa partire orthofinder
-    p1.wait() # aspetta che il comando finisca
-    if p1.returncode == 0: # se il comando è andato a buon fine stampa questo messaggio
+    p1 = sp.Popen(["wsl ", ofPath, " -f ", inputPath, " -o ", resultsFolder], stdout=sp.PIPE, stderr=sp.PIPE, text=True)
+    output, errors = p1.communicate()
+
+    p1.wait()  # Wait for the command to finish
+
+    if errors:
+        print(f"Orthofinder run failed. Error message: \n{errors}")
+    if p1.returncode == 0:
         print("OrthoFinder run successful")
     return resultsFolder
-
 
 ########################################################################################################################################
 # creating distMatrix                                                                                                                  #
@@ -162,8 +171,7 @@ def getHGT(comp):
 
 if __name__ == "__main__":
 
-    inputPath = "C:\Orthofinder\faino_prova_proteomi\protein" # il percorso del file in input con le sequenze FASTA
-    ofPath = "OrthoFinder/orthofinder" # il percorso dove è installato orthofinder
+
 
     ResultsPath = orthoResults(inputPath, ofPath)
 
