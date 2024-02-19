@@ -38,16 +38,16 @@ def arguments():
     args = parser.parse_args()
     return(args)
 
-
-
 def gffread(path):
     """
     Reads GFF files, modifies them, and performs file operations.
 
-    Args:
+    Parameters:
+    -----------
         path (str): The path to the directory containing GFF and FASTA files from the species of interest.
 
     Returns:
+    --------
         tuple: A tuple containing the paths to the protein files, the directory of two .fasta files (AA and DNA)
         and a gene association dictionary (matching a gene code to its original ID in the genome).
     """
@@ -172,12 +172,14 @@ def orthoResults(inputPath, numberThreads, extra, verbose):
     Runs Orthofinder on the specified directory and returns the path to the results folder.
     
     Args:
-        inputPath (str): The path to the directory containing the proteome files (.fasta format).
-        numberThreads (int): The number of threads to use for the Orthofinder run.
-        extra (str): Extra arguments to pass in the OrthoFinder command.
-        verbose (bool): If True, prints the output of the Orthofinder command.
+    -----
+        `inputPath (str)`: The path to the directory containing the proteome files (.fasta format).
+        `numberThreads (int)`: The number of threads to use for the Orthofinder run.
+        `extra (str)`: Extra arguments to pass in the OrthoFinder command.
+        `verbose (bool)`: If True, prints the output of the Orthofinder command.
         
     Returns:
+    --------
         str: The path to the OrthoFinder results folder.
     """
 
@@ -431,12 +433,14 @@ def append_species(entry_list, dict_species):
     """
     Transform an entry list (a list of rows) into a canonical pd.DataFrame.
     Add to the dataframe the information regarding the species to which the genes examined belong to
+    
     Args:
     -----
     entry_list: list
         A list of lists containing the gene pairs and their distances.
     dict_species: dict
         A dictionary containing the gene names and the species to which they belong.
+    
     Returns:
     --------
     pd.DataFrame
@@ -459,16 +463,6 @@ def append_species(entry_list, dict_species):
          columns = ["gene1", "gene2", "dist", "OG",  "type", "species"])
 
     return matrix
-
-def splitMatrix(distMatrix):
-
-    comparisons = []
-    unique_vals = distMatrix["species"].unique()
-    print(len(unique_vals))
-    for i in unique_vals:
-        comb = pd.DataFrame(distMatrix[distMatrix["species"] == i])
-        comparisons.append(comb)
-    return comparisons
 
 def getMeanDist(comp):
 
@@ -608,9 +602,12 @@ def get_topology(ResultsPath):
 
     return list_uniq
 
-def vennPlot(dist_matrix_kaks, dist_matrix_tree, list_topology):
+def vennPlot(kaks_OG_list, tree_OG_list, topology_OG_list):
     """
-    Parameters
+
+    Make a Venn Plot. Easy.
+
+    Parameters:
     ----------
     dist_matrix_kaks : pd.DataFrame
         A list of with the Ks distances sorted in ascending order.
@@ -621,9 +618,9 @@ def vennPlot(dist_matrix_kaks, dist_matrix_tree, list_topology):
 
     """
     plt.figure(figsize=(4, 4))
-    venn2([set(dist_matrix_kaks['OG'].to_list()),
-           set(dist_matrix_tree['OG'].to_list()),
-           set(list_topology)],
+    venn2([set(kaks_OG_list),
+           set(tree_OG_list),
+           set(topology_OG_list)],
           set_labels=('KaKs', 'Tree', 'Topology')
           )
     plt.show()
@@ -631,10 +628,12 @@ def vennPlot(dist_matrix_kaks, dist_matrix_tree, list_topology):
 def plotData(df):
     """
     A final function to plot the data.
-    Parameters
+
+    Parameters:
     ----------
     final_dataset : pd.DataFrame
-        A dataframe with the gene pairs and their distances, with the species information added.
+        A dataframe with all information to plot:
+            gene names, Ka/Ks ratio and OrthoFinder distance, species identity
     """
 
     fig = px.violin(df,
