@@ -1,0 +1,1 @@
+(Mycoplasma_agalactiae_gi|290752728|emb|CBH40702.1|:0,(Mycoplasma_agalactiae_gi|290752644|emb|CBH40617.1|:1.86766,(Mycoplasma_agalactiae_gi|290752931|emb|CBH40906.1|:0,Mycoplasma_agalactiae_gi|290752548|emb|CBH40520.1|:0):0):0);

@@ -1,0 +1,1 @@
+(Mycoplasma_hyopneumoniae_gi|144227641|gb|AAZ44536.2|:0.536555,(Mycoplasma_agalactiae_gi|290753082|emb|CBH41058.1|:1.05259,(Mycoplasma_gallisepticum_gi|31541069|gb|AAP56371.1|:0.474662,(Mycoplasma_genitalium_gi|3845063|gb|AAC72488.1|:1.8418,Mycoplasma_genitalium_gi|3844662|gb|AAC71282.1|:0.684167)n3:0.0760186)n2:0.495146)n1:0.536555)n0;

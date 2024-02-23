@@ -1,0 +1,14 @@
+2023-10-10 12:41:17 : Started OrthoFinder version 2.5.5
+Command Line: ./orthofinder -f genomes/protein/
+
+WorkingDirectory_Base: /home/lfaino/Downloads/bioinf2023/OrthoFinder/genomes/protein/OrthoFinder/Results_Oct10/WorkingDirectory/
+
+Species used: 
+0: GCF_000027325.1_ASM2732v1_genomic.protein.faa
+1: GCF_000286675.1_ASM28667v1_genomic.protein.faa
+2: GCF_000400855.1_ASM40085v1_genomic.protein.faa
+3: GCF_009150585.1_ASM915058v1_genomic.protein.faa
+
+
+ERROR: An error occurred
+ERROR: diamond makedb failed
