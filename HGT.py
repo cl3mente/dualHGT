@@ -15,6 +15,7 @@ import tqdm
 import pandas as pd
 import subprocess
 from matplotlib_venn import venn3
+import numpy as np
 import shutil
 import matplotlib.pyplot as plt
 import ete3
@@ -59,19 +60,19 @@ def gffread(path):
     cds_path =os.path.join(res_path , "cds")
     folder = Path(path)
 
-    # from the specified directory (parameter 'path') retrieve the name of all file that ends with extension = .gff
-
+    # from the specified directory (parameter 'path') retrieve the name of all .gff files
     gff = [".gff", ".gff3", ".gtf"]
     filename_gff = [os.path.join(folder, file.name) for file in folder.iterdir() if file.suffix in gff]
     count = 0
     species_name = []
+    
     for file in filename_gff:
         with open(file + "_mod_gff", "w") as fho:
             with open(file, "r") as fh:
                 for line in fh:
                     if len(line.split("\t")) == 9 and line.split("\t")[2].startswith("mRNA"):
                         count += 1
-                        genes_collection = [file.rsplit(".", 1)[0].rsplit("/", 1)[1], line.replace("\t", " ").rstrip()]
+                        genes_collection = [file.rsplit(".", 1)[0].rsplit("/", 1)[1], line.replace("\t", " ").rstrip()] # 
                         line = line.rstrip() + ";HGT=gene" + str(count) #TODO to add an index for each genome file # ?
                         fho.write(line + "\n")
                         gene_association["gene" + str(count)] = genes_collection
@@ -330,7 +331,6 @@ def kaksparallel(file):
 
     return my_list
 
-
 def read_kaks_file(kaks_filename):
     with open(kaks_filename, newline='') as resultskaks:
         next(resultskaks)
@@ -340,7 +340,6 @@ def read_kaks_file(kaks_filename):
                 # corresponding to the sequence name and the Ka/Ks ratio
                 my_list = [line.split('\t')[i] for i in [0, 3]]
     return my_list
-
 
 def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
     """
@@ -383,6 +382,8 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
                     for gene2 in genes2:
                         if gene2 == "empty":
                             break
+                        #if gene1 > gene2:
+                        #    gene1, gene2 = gene2, gene1 # impose an order to avoid duplication of pairs
                         line = f"{gene1}\t{gene2}\n"
                         output_file.write(line)
                             # data comes in this format:
@@ -634,7 +635,7 @@ def get_topology(ResultsPath):
 def vennPlot(kaks_OG_list, tree_OG_list, topology_OG_list):
     """
 
-    Make a Venn Plot. Easy.
+    Make a Venn Diagram. Easy.
 
     Parameters:
     ----------
@@ -714,11 +715,17 @@ if __name__ == "__main__":
              list_tree, 
              list_topology)
 
-    full_matrix = pd.merge(dist_matrix_kaks, 
-                           dist_matrix_tree, 
-                           on=['gene1', 'gene2', 'OG'],
-                           how="outer",
-                           suffixes=('_kaks', '_tree'))
+    plot_matrix = pd.concat([dist_matrix_kaks, dist_matrix_tree], axis=0)
+
+    full_matrix = pd.DataFrame({
+        'gene1': dist_matrix_kaks['gene1'],
+        'gene2': dist_matrix_kaks['gene2'],
+        'OG': np.unique(pd.concat(dist_matrix_kaks['OG'], dist_matrix_tree['OG']))
+        'dist_kaks': dist_matrix_kaks['dist'],
+        'dist_tree': dist_matrix_tree['dist'],
+        'hgt_kaks': dist_matrix_kaks['HGT'],
+        'hgt_tree': dist_matrix_tree['HGT']
+    })
 
     full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(int) # add the topology score if the OG appears in `list_topology`
 
@@ -727,8 +734,12 @@ if __name__ == "__main__":
     full_matrix.sort_values(by=['HGT'], inplace=True, ascending=False)
 
     # TODO go back to the original protein name with dict_match
+
+    full_matrix['gene1'] = ''.join(dict_species[full_matrix['gene1']])
+    full_matrix['gene2'] = ''.join(dict_species[full_matrix['gene2']])
+
     # write the final output to a .tsv file; in the form of a dataframe with scores from the KaKs, tree, and topology analyses
     with open('HGT_candidates.tsv', 'w') as f:
         full_matrix.to_csv(f, sep='\t', index=False)
     
-    plotData(full_matrix)
+    plotData(plot_matrix)
