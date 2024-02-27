@@ -14,15 +14,15 @@ import multiprocessing as mp
 import tqdm
 import pandas as pd
 import subprocess
-from matplotlib_venn import venn2
+from matplotlib_venn import venn3
 import shutil
 import matplotlib.pyplot as plt
 import ete3
 
 PARAAT = "ParaAT.pl  -h  %s  -a  %s  -n  %s   -p  %s  -o  %s -f axt"
 KAKS = "KaKs_Calculator  -i %s -o %s -m %s"
-ORTHOFINDER = "/home/lfaino/Downloads/OrthoFinder2.3.8/orthofinder -f %s -t %s -o %s %s"
-PARAAT = "ParaAT.pl  -h  %s  -a  %s  -n  %s  -m muscle -p  %s  -o  %s -f axt"
+ORTHOFINDER = "/data/bioinf2023/PlantPath2023/OrthoFinder/orthofinder -f %s -t %s -o %s %s"
+# PARAAT = "ParaAT.pl  -h  %s  -a  %s  -n  %s  -m muscle -p  %s  -o  %s -f axt"
 
 
 def arguments():
@@ -292,7 +292,7 @@ def parseOrthofinder(ResultsPath: str, threads: int):
     distances = []
     # read the gene trees in parallel with multiprocessing.Pool()
     with mp.Pool(threads) as p:
-        for x in tqdm.tqdm(p.imap_unordered(read_tree, tree_abs_path), total=len(tree_abs_path)):
+        for x in tqdm.tqdm(p.imap_unordered(read_tree, tree_abs_path), total=len(tree_abs_path), desc="Reading GeneTrees..."):
             distances.append(x) # appends each entry to `distances`
             pass
     
@@ -326,15 +326,21 @@ def kaksparallel(file):
         print(err)
 
     # read the output file and return the gene pair and their distance
-    with open(output, newline='') as resultskaks:
+    my_list = read_kaks_file(output)
+
+    return my_list
+
+
+def read_kaks_file(kaks_filename):
+    with open(kaks_filename, newline='') as resultskaks:
         next(resultskaks)
         for line in resultskaks:
             if line.strip():
                 # take the first and fourth elements of the file
                 # corresponding to the sequence name and the Ka/Ks ratio
                 my_list = [line.split('\t')[i] for i in [0, 3]]
-
     return my_list
+
 
 def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
     """
@@ -352,7 +358,7 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
     with open(fileThreads, "w") as fh:
         fh.write(str(threads) +"\n")
 
-    # create a dictionary to match genes to orthogrous, output
+    # create a dictionary to match genes to orthogroups, output
     data = pd.read_csv(ResultsPath  + "/Orthogroups/Orthogroups.tsv", sep="\t")
     data_dict = {}
     data.fillna('empty', inplace = True)
@@ -364,7 +370,8 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
             values.append(row[i].split(', '))
             data_dict[key] = values
 
-    # a dictionary that contains gene pairs matched to their orthogroup.  
+    # a dictionary that contains gene pairs matched to their orthogroup.
+    # questo va cambiato per evitare la run di paraAT
     dict_match = {}
     file_out = os.path.join('/tmp/output.txt')
     with open(file_out, 'w') as output_file:
@@ -384,47 +391,69 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
 
     kaksfolder = ResultsPath + "/kaksfolder"
 
-    # run paraAT in the shell. 
-    # This will create .axt files from the protein and CDS files
-    runparaAT = PARAAT % (file_out, proteinfilefinal, cdsfilefinal, "./proc", kaksfolder)
-    print(runparaAT)
-    run = subprocess.Popen(runparaAT, shell=True, cwd=ResultsPath,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out,err = run.communicate()
+    # check if there's any .axt filepath from paraAT
 
-    # retrieve all the .axt filepaths from paraAT
     axtFiles = []
     for filename in os.listdir(kaksfolder):
         if filename.endswith('.axt'):
             axtFiles.append(os.path.join(kaksfolder, filename))
 
-    # run 'kaksparallel' function on the .axt files in parallel with multiprocessing.Pool()
+
+    if axtFiles:
+        pass
+    else:
+        # run paraAT in the shell.
+        # This will create .axt files from the protein and CDS files
+        runparaAT = PARAAT % (file_out, proteinfilefinal, cdsfilefinal, fileThreads, kaksfolder)
+        print(runparaAT)
+        run = subprocess.Popen(runparaAT, shell=True, cwd=ResultsPath,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out,err = run.communicate()
+        if arg.verbose:
+            print(out)
+            print(err)
+        for filename in os.listdir(kaksfolder):
+            if filename.endswith('.axt'):
+                axtFiles.append(os.path.join(kaksfolder, filename))
+
     var = []
-    with mp.Pool(threads) as p:
-        with tqdm.tqdm(total=len(axtFiles), desc="running kaks...") as pbar:
-            for x in p.imap_unordered(kaksparallel, axtFiles):
-                # x is a list that looks like this: 
-                #   ['seq_(pair?)_name', 'Ka/Ks ratio']
-                var.append(x)
-                # therefore var will be a list of lists:
-                #   [
-                #       ['seq_(pair?)_name1', 'Ka/Ks ratio1'], 
-                #       ['seq_(pair?)_name2', 'Ka/Ks ratio2'], 
-                #       ...
-                #   ]
-                pbar.update()
+
+    kaks_filepaths = []
+    for filename in os.listdir(kaksfolder):
+        if filename.endswith('.kaks'):
+            kaks_filepaths.append(os.path.join(kaksfolder, filename))
+
+    if kaks_filepaths:
+        for file in kaks_filepaths:
+            row = read_kaks_file(file)
+            var.append(row)
+    else: # run 'kaksparallel' function on the .axt files in parallel with multiprocessing.Pool()
+        with mp.Pool(threads) as p:
+            with tqdm.tqdm(total=len(axtFiles), desc="running kaks...") as pbar:
+                for x in p.imap_unordered(kaksparallel, axtFiles):
+                    # x is a list that looks like this:
+                    #   ['seq_(pair?)_name', 'Ks']
+                    var.append(x)
+                    # therefore var will be a list of lists:
+                    #   [
+                    #       ['seq_(pair?)_name1', 'Ks'],
+                    #       ['seq_(pair?)_name2', 'Ks'],
+                    #       ...
+                    #   ]
+                    pbar.update()
 
     # create an 'info' list with KaKs score and the gene pairs.
     #   data comes in this format:
-    #   [[gene1, gene2, OG, KaKs]]
+    #   [[gene1, gene2, OG, Ks]]
                 
     distances = []
+
     for entry in var:
         OG = dict_match[entry[0]] # retrieve orthogroup by matching with the seq_pair name
         genes = entry[0].rsplit("-") # retrieve the original gene names
 
         del entry[0] # delete the seq_pair name
 
-        row = genes + entry + OG + ["kaks"]
+        row = genes + entry + [OG, "kaks"]
         distances.append(row)
 
     return distances
@@ -492,14 +521,14 @@ def getHGT(matrix, dict_species):
     matrix2 = append_species(matrix, dict_species)
 
     # format the pd.DataFrame from list
-    matrix2 = matrix2[matrix2['dist'] != "NA" & matrix2['dist'].notna()]  # remove NAs
-    matrix2['dist'] = pd.to_numeric(matrix2['dist'], downcast='float')
+    matrix2 = matrix2[matrix2['dist'] != "NA"]  # remove NAs
+    matrix2['dist'] = pd.to_numeric(matrix2['dist'], downcast='float', )
     matrix2['HGT'] = None   # initialize an empty column for the HGT score
     sp_pairs = matrix2['species'].unique()    
 
     for sp in sp_pairs:
-        threshold = matrix2['species' == sp]['dist'].quantile(.05) # get the 5th percentile of the distance.
-        matrix2['species' == sp]['HGT'] = matrix2['dist'] < threshold # set the 'HGT' variable to True if the distance is less than the threshold
+        threshold = matrix2[matrix2['species'] == sp]['dist'].quantile(.05) # get the 5th percentile of the distance.
+        matrix2.loc[matrix2['species'] == sp, 'HGT'] = matrix2['dist'] < threshold # set the 'HGT' variable to True if the distance is less than the threshold
     
     return matrix2
 
@@ -618,7 +647,7 @@ def vennPlot(kaks_OG_list, tree_OG_list, topology_OG_list):
 
     """
     plt.figure(figsize=(4, 4))
-    venn2([set(kaks_OG_list),
+    venn3([set(kaks_OG_list),
            set(tree_OG_list),
            set(topology_OG_list)],
           set_labels=('KaKs', 'Tree', 'Topology')
@@ -666,9 +695,8 @@ if __name__ == "__main__":
     dist_matrix_kaks = parseKaKs(ResultsPath,arg.numberThreads,prot_all_file,cds_all_file)
     dist_matrix_kaks = getHGT(dist_matrix_kaks, dict_species)
 
-
-    list_kaks = dist_matrix_kaks['HGT' == 1]['OG'].to_list()
-    list_tree = dist_matrix_tree['HGT' == 1]['OG'].to_list()
+    list_kaks = dist_matrix_kaks.loc[dist_matrix_kaks['HGT'] == True,'OG'].to_list()
+    list_tree = dist_matrix_tree.loc[dist_matrix_tree['HGT'] == True,'OG'].to_list()
     list_topology = get_topology(ResultsPath)
 
     if arg.verbose: # show the topology of the candidate HGT orthogroups
@@ -688,7 +716,7 @@ if __name__ == "__main__":
 
     full_matrix = pd.merge(dist_matrix_kaks, 
                            dist_matrix_tree, 
-                           on=['gene1', 'gene2'], 
+                           on=['gene1', 'gene2', 'OG'],
                            how="outer",
                            suffixes=('_kaks', '_tree'))
 
@@ -698,6 +726,7 @@ if __name__ == "__main__":
     full_matrix['HGT'] = full_matrix['HGT_kaks'] + full_matrix['HGT_tree'] + full_matrix['HGT_topology']
     full_matrix.sort_values(by=['HGT'], inplace=True, ascending=False)
 
+    # TODO go back to the original protein name with dict_match
     # write the final output to a .tsv file; in the form of a dataframe with scores from the KaKs, tree, and topology analyses
     with open('HGT_candidates.tsv', 'w') as f:
         full_matrix.to_csv(f, sep='\t', index=False)
