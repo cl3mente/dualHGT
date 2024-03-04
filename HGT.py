@@ -717,15 +717,8 @@ if __name__ == "__main__":
 
     plot_matrix = pd.concat([dist_matrix_kaks, dist_matrix_tree], axis=0)
 
-    full_matrix = pd.DataFrame({
-        'gene1': dist_matrix_kaks['gene1'],
-        'gene2': dist_matrix_kaks['gene2'],
-        'OG': np.unique(pd.concat(dist_matrix_kaks['OG'], dist_matrix_tree['OG'])),
-        'dist_kaks': dist_matrix_kaks['dist'],
-        'dist_tree': dist_matrix_tree['dist'],
-        'hgt_kaks': dist_matrix_kaks['HGT'],
-        'hgt_tree': dist_matrix_tree['HGT']
-        })
+    full_matrix = pd.pivot(plot_matrix, values=['dist', 'HGT'], columns='type', index=['gene_1','gene_2', 'OG']).reset_index()
+    full_matrix.columns = ['gene_1', 'gene_2', 'OG', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']
 
     full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(int) # add the topology score if the OG appears in `list_topology`
 
@@ -735,11 +728,31 @@ if __name__ == "__main__":
 
     # TODO go back to the original protein name with dict_match
 
-    full_matrix['gene1'] = ''.join(dict_species[full_matrix['gene1']])
-    full_matrix['gene2'] = ''.join(dict_species[full_matrix['gene2']])
+    match = {}
+    for key, value in dict_species.items():
+        mkey = key
+        sp_name, genID = value[0], value[1]
+        genID = genID.split('ID=')[-1]
+        mvalue = '_'.join([sp_name, genID])
+        match[mkey] = mvalue
+
+    full_matrix['gene_1'] = full_matrix['gene_1'].map(match)
+    full_matrix['gene_2'] = full_matrix['gene_2'].map(match)
+
+    """
+    names = {}
+    for i in full_matrix['gene_1']:
+
+        if i in match:
+
+            names.append(match[i])
+    full_matrix['gene_1'] = names
+    """
 
     # write the final output to a .tsv file; in the form of a dataframe with scores from the KaKs, tree, and topology analyses
-    with open('HGT_candidates.tsv', 'w') as f:
+    if os.path.exists('HGT_candidates.tsv'):
+        os.remove('HGT_candidates.tsv')
+    with open('HGT_candidates.tsv', 'x') as f:
         full_matrix.to_csv(f, sep='\t', index=False)
     
     plotData(plot_matrix)
