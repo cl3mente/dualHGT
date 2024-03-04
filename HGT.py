@@ -720,12 +720,12 @@ if __name__ == "__main__":
     full_matrix = pd.DataFrame({
         'gene1': dist_matrix_kaks['gene1'],
         'gene2': dist_matrix_kaks['gene2'],
-        'OG': np.unique(pd.concat(dist_matrix_kaks['OG'], dist_matrix_tree['OG']))
+        'OG': np.unique(pd.concat(dist_matrix_kaks['OG'], dist_matrix_tree['OG'])),
         'dist_kaks': dist_matrix_kaks['dist'],
         'dist_tree': dist_matrix_tree['dist'],
         'hgt_kaks': dist_matrix_kaks['HGT'],
         'hgt_tree': dist_matrix_tree['HGT']
-    })
+        })
 
     full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(int) # add the topology score if the OG appears in `list_topology`
 
