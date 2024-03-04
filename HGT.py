@@ -339,9 +339,6 @@ def read_kaks_file(kaks_filename):
                 # take the first and fourth elements of the file
                 # corresponding to the sequence name and the Ka/Ks ratio
                 my_list = [line.split('\t')[i] for i in [0, 3]]
-
-
-
     return my_list
 
 def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
@@ -705,8 +702,7 @@ if __name__ == "__main__":
     list_tree = dist_matrix_tree.loc[dist_matrix_tree['HGT'] == True,'OG'].to_list()
     list_topology = get_topology(ResultsPath)
 
-    if arg.verbose:
-    #if arg.verbose: # show the topology of the candidate HGT orthogroups
+    if arg.verbose: # show the topology of the candidate HGT orthogroups
         print("printing the topology of candidate HGT orthogroups:\n")
         for OG in list_topology:
             single_tree_folder = os.path.join(ResultsPath, "Gene_Trees/")
@@ -776,8 +772,6 @@ if __name__ == "__main__":
     """
 
     # write the final output to a .tsv file; in the form of a dataframe with scores from the KaKs, tree, and topology analyses
-
-
     if os.path.exists('HGT_candidates.tsv'):
         os.remove('HGT_candidates.tsv')
     with open('HGT_candidates.tsv', 'x') as f:
