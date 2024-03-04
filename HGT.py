@@ -738,6 +738,8 @@ if __name__ == "__main__":
 
 
     plot_matrix = pd.concat([dist_matrix_kaks, dist_matrix_tree], axis=0)
+    # TODO togliere i self plot
+    #plot_matrix = plot_matrix.loc['species'!=]
 
     full_matrix = pd.pivot(plot_matrix, values=['dist', 'HGT'], columns='type', index=['gene_1','gene_2', 'OG']).reset_index()
     full_matrix.columns = ['gene_1', 'gene_2', 'OG', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']
@@ -755,14 +757,13 @@ if __name__ == "__main__":
         mkey = key
         sp_name, genID = value[0], value[1]
         genID = genID.split('ID=')[-1]
-        mvalue = '_'.join([sp_name,genID])
+        mvalue = '_'.join([sp_name, genID])
         match[mkey] = mvalue
 
-    print('a')
-    print(match['gene1'])
+    full_matrix['gene_1'] = full_matrix['gene_1'].map(match)
+    full_matrix['gene_2'] = full_matrix['gene_2'].map(match)
 
-    full_matrix.replace({'gene_1':match, 'gene_2':match}, inplace=True)
-
+    """
     names = {}
     for i in full_matrix['gene_1']:
 
@@ -770,12 +771,12 @@ if __name__ == "__main__":
 
             names.append(match[i])
     full_matrix['gene_1'] = names
-
-
-    print('b')
+    """
 
     # write the final output to a .tsv file; in the form of a dataframe with scores from the KaKs, tree, and topology analyses
-    with open('HGT_candidates.tsv', 'w') as f:
+    if os.path.exists('HGT_candidates.tsv'):
+        os.remove('HGT_candidates.tsv')
+    with open('HGT_candidates.tsv', 'x') as f:
         full_matrix.to_csv(f, sep='\t', index=False)
     
     plotData(plot_matrix)
