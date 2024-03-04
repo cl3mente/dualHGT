@@ -72,7 +72,7 @@ def gffread(path):
                 for line in fh:
                     if len(line.split("\t")) == 9 and line.split("\t")[2].startswith("mRNA"):
                         count += 1
-                        genes_collection = [file.rsplit(".", 1)[0].rsplit("/", 1)[1], line.replace("\t", " ").rstrip()] # 
+                        genes_collection = [file.rsplit(".", 1)[0].rsplit("/", 1)[1], line.replace("\t", " ").rstrip()]
                         line = line.rstrip() + ";HGT=gene" + str(count) #TODO to add an index for each genome file # ?
                         fho.write(line + "\n")
                         gene_association["gene" + str(count)] = genes_collection
@@ -490,7 +490,7 @@ def append_species(entry_list, dict_species):
 
 
     matrix = pd.DataFrame(final,
-         columns = ["gene1", "gene2", "dist", "OG",  "type", "species"])
+         columns = ["gene_1", "gene_2", "dist", "OG",  "type", "species"])
 
     return matrix
 
@@ -523,7 +523,7 @@ def getHGT(matrix, dict_species):
 
     # format the pd.DataFrame from list
     matrix2 = matrix2[matrix2['dist'] != "NA"]  # remove NAs
-    matrix2['dist'] = pd.to_numeric(matrix2['dist'], downcast='float', )
+    matrix2['dist'] = pd.to_numeric(matrix2['dist'], downcast='float')
     matrix2['HGT'] = None   # initialize an empty column for the HGT score
     sp_pairs = matrix2['species'].unique()    
 
@@ -572,11 +572,11 @@ def getHGT(matrix, dict_species):
     """
     """
      dist_ks = pd.DataFrame(kaks_table,
-                               columns=["gene1", "gene2", "dist", "OG", "type", "species"])
+                               columns=["gene_1", "gene_2", "dist", "OG", "type", "species"])
     dist_ks_sorted = dist_ks.sort_values(by='dist')
 
     dist_tree = pd.DataFrame(tree_table,
-                               columns=["gene1", "gene2", "dist", "OG", "type", "species"])
+                               columns=["gene_1", "gene_2", "dist", "OG", "type", "species"])
     dist_tree_sorted = dist_tree.sort_values(by='dist') 
     """
 
@@ -700,7 +700,9 @@ if __name__ == "__main__":
     list_tree = dist_matrix_tree.loc[dist_matrix_tree['HGT'] == True,'OG'].to_list()
     list_topology = get_topology(ResultsPath)
 
-    if arg.verbose: # show the topology of the candidate HGT orthogroups
+    # TODO modificare arg.verbose che va qua
+    if False:
+    #if arg.verbose: # show the topology of the candidate HGT orthogroups
         print("printing the topology of candidate HGT orthogroups:\n")
         for OG in list_topology:
             single_tree_folder = os.path.join(ResultsPath, "Gene_Trees/")
@@ -715,17 +717,30 @@ if __name__ == "__main__":
              list_tree, 
              list_topology)
 
+    intersection = list(set([i for i in list_kaks if i in list_tree and i in list_topology]))
+    print(len(intersection))
+    inters_path = os.path.join("intersection.tsv")
+    if os.path.exists(inters_path):
+        os.remove(inters_path)
+    with open(inters_path, 'x') as f:
+        for i in intersection:
+            f.write(i + '\n')
+
+    single_tree_folder = os.path.join(ResultsPath, "Gene_Trees/")
+    for i in intersection:
+        file_og = os.path.join(single_tree_folder, i + "_tree.txt")
+        with open(file_og, "r") as fh:
+            og_single = fh.read()
+        og_tree = ete3.Tree(og_single)
+        print(i)
+        print(og_tree)
+
+
+
     plot_matrix = pd.concat([dist_matrix_kaks, dist_matrix_tree], axis=0)
 
-    full_matrix = pd.DataFrame({
-        'gene1': dist_matrix_kaks['gene1'],
-        'gene2': dist_matrix_kaks['gene2'],
-        'OG': np.unique(pd.concat(dist_matrix_kaks['OG'], dist_matrix_tree['OG']))
-        'dist_kaks': dist_matrix_kaks['dist'],
-        'dist_tree': dist_matrix_tree['dist'],
-        'hgt_kaks': dist_matrix_kaks['HGT'],
-        'hgt_tree': dist_matrix_tree['HGT']
-    })
+    full_matrix = pd.pivot(plot_matrix, values=['dist', 'HGT'], columns='type', index=['gene_1','gene_2', 'OG']).reset_index()
+    full_matrix.columns = ['gene_1', 'gene_2', 'OG', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']
 
     full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(int) # add the topology score if the OG appears in `list_topology`
 
@@ -735,8 +750,29 @@ if __name__ == "__main__":
 
     # TODO go back to the original protein name with dict_match
 
-    full_matrix['gene1'] = ''.join(dict_species[full_matrix['gene1']])
-    full_matrix['gene2'] = ''.join(dict_species[full_matrix['gene2']])
+    match = {}
+    for key, value in dict_species.items():
+        mkey = key
+        sp_name, genID = value[0], value[1]
+        genID = genID.split('ID=')[-1]
+        mvalue = '_'.join([sp_name,genID])
+        match[mkey] = mvalue
+
+    print('a')
+    print(match['gene1'])
+
+    full_matrix.replace({'gene_1':match, 'gene_2':match}, inplace=True)
+
+    names = {}
+    for i in full_matrix['gene_1']:
+
+        if i in match:
+
+            names.append(match[i])
+    full_matrix['gene_1'] = names
+
+
+    print('b')
 
     # write the final output to a .tsv file; in the form of a dataframe with scores from the KaKs, tree, and topology analyses
     with open('HGT_candidates.tsv', 'w') as f:
