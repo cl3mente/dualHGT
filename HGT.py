@@ -339,6 +339,9 @@ def read_kaks_file(kaks_filename):
                 # take the first and fourth elements of the file
                 # corresponding to the sequence name and the Ka/Ks ratio
                 my_list = [line.split('\t')[i] for i in [0, 3]]
+
+
+
     return my_list
 
 def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
@@ -424,9 +427,11 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
             kaks_filepaths.append(os.path.join(kaksfolder, filename))
 
     if kaks_filepaths:
-        for file in kaks_filepaths:
-            row = read_kaks_file(file)
-            var.append(row)
+        with mp.Pool(threads) as p:
+            for x in tqdm.tqdm(p.imap_unordered(read_kaks_file, kaks_filepaths), total=len(kaks_filepaths),
+                               desc="Reading KaKs files..."):
+                var.append(x)  # appends each entry to `var`
+                pass
     else: # run 'kaksparallel' function on the .axt files in parallel with multiprocessing.Pool()
         with mp.Pool(threads) as p:
             with tqdm.tqdm(total=len(axtFiles), desc="running kaks...") as pbar:
@@ -632,7 +637,7 @@ def get_topology(ResultsPath):
 
     return list_uniq
 
-def vennPlot(kaks_OG_list, tree_OG_list, topology_OG_list):
+def vennPlot(kaks_OG_list: list, tree_OG_list: list, topology_OG_list: list):
     """
 
     Make a Venn Diagram. Easy.
@@ -700,8 +705,7 @@ if __name__ == "__main__":
     list_tree = dist_matrix_tree.loc[dist_matrix_tree['HGT'] == True,'OG'].to_list()
     list_topology = get_topology(ResultsPath)
 
-    # TODO modificare arg.verbose che va qua
-    if False:
+    if arg.verbose:
     #if arg.verbose: # show the topology of the candidate HGT orthogroups
         print("printing the topology of candidate HGT orthogroups:\n")
         for OG in list_topology:
@@ -735,11 +739,9 @@ if __name__ == "__main__":
         print(i)
         print(og_tree)
 
-
-
     plot_matrix = pd.concat([dist_matrix_kaks, dist_matrix_tree], axis=0)
     # TODO togliere i self plot
-    #plot_matrix = plot_matrix.loc['species'!=]
+    # plot_matrix = plot_matrix.loc['species'!='']
 
     full_matrix = pd.pivot(plot_matrix, values=['dist', 'HGT'], columns='type', index=['gene_1','gene_2', 'OG']).reset_index()
     full_matrix.columns = ['gene_1', 'gene_2', 'OG', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']
@@ -756,7 +758,7 @@ if __name__ == "__main__":
     for key, value in dict_species.items():
         mkey = key
         sp_name, genID = value[0], value[1]
-        genID = genID.split('ID=')[-1]
+        genID = genID.split('ID=')[-1].split(";")[0]
         mvalue = '_'.join([sp_name, genID])
         match[mkey] = mvalue
 
@@ -774,6 +776,8 @@ if __name__ == "__main__":
     """
 
     # write the final output to a .tsv file; in the form of a dataframe with scores from the KaKs, tree, and topology analyses
+
+
     if os.path.exists('HGT_candidates.tsv'):
         os.remove('HGT_candidates.tsv')
     with open('HGT_candidates.tsv', 'x') as f:
