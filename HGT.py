@@ -252,16 +252,15 @@ def read_tree(info):
             name1, name2 = name2, name1
 
         dist = genTree.distance(name1, name2)
-        #
-        # sp1 = sorted([os.path.commonprefix([i, name1]) for i in species_list], key=len)
-        # sp2 = sorted([os.path.commonprefix([i, name2]) for i in species_list], key=len)
-        #
-        # species_comb = sp1[-1] + "_vs_" + sp2[-1]
 
         type = "tree"
         name1 = name1.split("_")[-1]
         name2 = name2.split("_")[-1]
-        distances.append([name1, name2, float(dist), genetree.split("/")[-1].split("_")[0], type])
+
+        if name1 < name2:
+            name1, name2 = name2, name1
+
+        distances.append([name1, name2, genetree.split("/")[-1].split("_")[0], float(dist), type])
         # the final output is `distances`, a list that looks like this:
         # [["gene1", "gene2", "dist", "OG", "type"]]
 
@@ -351,7 +350,7 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
         cdsfilefinal (str): The path to the CDS file.
     ## Returns:
         list: A list containing the gene pairs and their distances. The list will contain this data:
-            `gene1` | `gene2` | `dist` = Ka/Ks ratio | `OG` | `type` = "kaks"
+            `gene1` | `gene2` | `OG` | `dist` = Ks value | `type` = "kaks"
     """
     fileThreads = ResultsPath + "/proc"
     with open(fileThreads, "w") as fh:
@@ -370,7 +369,7 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
             data_dict[key] = values
 
     # a dictionary that contains gene pairs matched to their orthogroup.
-    # questo va cambiato per evitare la run di paraAT
+    # TODO questo va cambiato per evitare la run di paraAT
     dict_match = {}
     file_out = os.path.join('/tmp/output.txt')
     with open(file_out, 'w') as output_file:
@@ -382,8 +381,10 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
                     for gene2 in genes2:
                         if gene2 == "empty":
                             break
-                        #if gene1 > gene2:
-                        #    gene1, gene2 = gene2, gene1 # impose an order to avoid duplication of pairs
+
+                        if gene1 < gene2:
+                            gene1, gene2 = gene2, gene1
+
                         line = f"{gene1}\t{gene2}\n"
                         output_file.write(line)
                             # data comes in this format:
@@ -451,12 +452,22 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
     distances = []
 
     for entry in var:
-        OG = dict_match[entry[0]] # retrieve orthogroup by matching with the seq_pair name
-        genes = entry[0].rsplit("-") # retrieve the original gene names
+        try:
+            OG = dict_match[entry[0]]  # retrieve orthogroup by matching with the seq_pair name
+        except KeyError:
+            continue
+        name1, name2 = entry[0].rsplit("-") # retrieve the original gene names
 
-        del entry[0] # delete the seq_pair name
+        if name1 < name2:
+            name1, name2 = name2, name1
 
-        row = genes + entry + [OG, "kaks"]
+
+        dist = entry[1]
+        try:
+            dist = float(dist)
+        except ValueError:
+            continue
+        row = [name1, name2, OG, dist, "kaks"]
         distances.append(row)
 
     return distances
@@ -481,18 +492,20 @@ def append_species(entry_list, dict_species):
 
     final = []
     for line in entry_list:
-        species = []
         if dict_species[line[0]]:
-            species.append(dict_species[line[0]][0])
+            species1 = dict_species[line[0]][0]
         if dict_species[line[1]]:
-            species.append(dict_species[line[1]][0])
-        species.sort()
-        line.append("_".join(species))
+            species2 = dict_species[line[1]][0]
+        if species1 < species2:
+            species1, species2 = species2, species1
+
+        row = species1 + '_vs_' + species2
+        line.append(row)
         final.append(line)
 
 
     matrix = pd.DataFrame(final,
-         columns = ["gene_1", "gene_2", "dist", "OG",  "type", "species"])
+         columns = ["gene_1", "gene_2", "OG", "dist",  "type", "species"])
 
     return matrix
 
@@ -726,20 +739,23 @@ if __name__ == "__main__":
         for i in intersection:
             f.write(i + '\n')
 
-    single_tree_folder = os.path.join(ResultsPath, "Gene_Trees/")
-    for i in intersection:
-        file_og = os.path.join(single_tree_folder, i + "_tree.txt")
-        with open(file_og, "r") as fh:
-            og_single = fh.read()
-        og_tree = ete3.Tree(og_single)
-        print(i)
-        print(og_tree)
+    if arg.verbose:
+        single_tree_folder = os.path.join(ResultsPath, "Gene_Trees/")
+        for i in intersection:
+            file_og = os.path.join(single_tree_folder, i + "_tree.txt")
+            with open(file_og, "r") as fh:
+                og_single = fh.read()
+            og_tree = ete3.Tree(og_single)
+            print(i)
+            print(og_tree)
+
+    # TODO togliere i self
 
     plot_matrix = pd.concat([dist_matrix_kaks, dist_matrix_tree], axis=0)
-    # TODO togliere i self plot
+    plot_matrix['names_combined'] = plot_matrix[['gene_1', 'gene_2']].agg('-'.join, axis=1)
     # plot_matrix = plot_matrix.loc['species'!='']
 
-    full_matrix = pd.pivot(plot_matrix, values=['dist', 'HGT'], columns='type', index=['gene_1','gene_2', 'OG']).reset_index()
+    full_matrix = pd.pivot(plot_matrix, index=['names_combined'], columns='type').reset_index()
     full_matrix.columns = ['gene_1', 'gene_2', 'OG', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']
 
     full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(int) # add the topology score if the OG appears in `list_topology`
@@ -748,7 +764,7 @@ if __name__ == "__main__":
     full_matrix['HGT'] = full_matrix['HGT_kaks'] + full_matrix['HGT_tree'] + full_matrix['HGT_topology']
     full_matrix.sort_values(by=['HGT'], inplace=True, ascending=False)
 
-    # TODO go back to the original protein name with dict_match
+    # TODO fix geneID
 
     match = {}
     for key, value in dict_species.items():
