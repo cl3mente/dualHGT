@@ -496,6 +496,8 @@ def append_species(entry_list, dict_species):
             species1 = dict_species[line[0]][0]
         if dict_species[line[1]]:
             species2 = dict_species[line[1]][0]
+        if species1 == species2:
+            continue
         if species1 < species2:
             species1, species2 = species2, species1
 
