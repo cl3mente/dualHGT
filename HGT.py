@@ -796,5 +796,8 @@ if __name__ == "__main__":
         os.remove('HGT_candidates.tsv')
     with open('HGT_candidates.tsv', 'x') as f:
         full_matrix.to_csv(f, sep='\t', index=False)
-    
+
+
+    with open('plot_data.tsv', 'x') as f:
+        plot_matrix.to_csv(f, sep='\t',index=False)
     plotData(plot_matrix)
