@@ -750,13 +750,15 @@ if __name__ == "__main__":
             print(og_tree)
 
     # TODO togliere i self
-
     plot_matrix = pd.concat([dist_matrix_kaks, dist_matrix_tree], axis=0)
-    plot_matrix['names_combined'] = plot_matrix[['gene_1', 'gene_2']].agg('-'.join, axis=1)
-    # plot_matrix = plot_matrix.loc['species'!='']
 
-    full_matrix = pd.pivot(plot_matrix, index=['names_combined'], columns='type').reset_index()
-    full_matrix.columns = ['gene_1', 'gene_2', 'OG', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']
+    full_matrix = pd.merge(dist_matrix_kaks,
+                          dist_matrix_tree[['gene_1', 'gene_2', 'dist', 'HGT']],
+                          how='inner',
+                          on=['gene_1', 'gene_2'],
+                          suffixes=['_kaks', '_tree'])
+
+    full_matrix = full_matrix[['gene_1', 'gene_2', 'OG', 'species', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']]
 
     full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(int) # add the topology score if the OG appears in `list_topology`
 
