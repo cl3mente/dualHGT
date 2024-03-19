@@ -18,6 +18,8 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+RUN mkdir /app/input
+
 # Create a non-privileged user that the app will run under.
 # See https://docs.docker.com/go/dockerfile-user-best-practices/
 ARG UID=10001
@@ -37,25 +39,17 @@ RUN adduser \
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.txt,target=requirements.txt \
     python -m pip install -r requirements.txt
-
 # Include OrthoFinder in the image
 RUN apt-get update && apt-get install -y \
-    ncbi-blast+ \
-    mcl \
-    fastme \
-    diamond \
     wget \
-    unzip \
-    wget https://github.com/davidemms/OrthoFinder/releases/latest/download/OrthoFinder.tar.gz && \
-    tar xf OrthoFinder.tar.gz && \
+    unzip
+RUN wget https://github.com/davidemms/OrthoFinder/releases/download/2.5.5/OrthoFinder.tar.gz && \
+    tar xzvf OrthoFinder.tar.gz && \
     rm OrthoFinder.tar.gz
-
 # Include KaKs_Calculator in the image
-
-RUN wget https://sourceforge.net/projects/kakscalculator2/files/KaKs_Calculator2.0.tar.gz/download && \
-    tar -xf KaKs_Calculator2.0.tar.gz && \
+COPY KaKs_Calculator2.0.tar.gz .
+RUN tar -xf KaKs_Calculator2.0.tar.gz && \
     rm KaKs_Calculator2.0.tar.gz
-
 # Include paraAT in the image
 RUN wget https://download.cncb.ac.cn/bigd/tools/ParaAT2.0.tar.gz && \
     tar -xf ParaAT2.0.tar.gz && \
@@ -70,5 +64,7 @@ COPY . .
 # Expose the port that the application listens on.
 EXPOSE 8000
 
+VOLUME /app/input
 # Run the application.
 # CMD python HGT.py -i /data/bioinf2023/PlantPath2023/genomeANDgff -OFr /data/bioinf2023/PlantPath2023/genomeANDgff/results/prot/f7b812/Results_Feb23  -v -nt 50
+# ENTRYPOINT ["python","./HGT.py"]

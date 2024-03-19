@@ -711,6 +711,9 @@ def plotData(df):
 
 if __name__ == "__main__":
 
+    print(os.getcwd())
+    print("a")
+
     arg = arguments()
 
     prot_path,prot_all_file, cds_all_file,dict_species = gffread(arg.input)
