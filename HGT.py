@@ -4,6 +4,7 @@ from collections import defaultdict
 import plotly.express as px
 import argparse
 from Bio import Phylo, SeqIO
+import Bio
 from io import StringIO
 import subprocess as sp
 import os
@@ -25,9 +26,10 @@ KAKS = "KaKs_Calculator  -i %s -o %s -m %s"
 ORTHOFINDER = "/data/bioinf2023/PlantPath2023/OrthoFinder/orthofinder -f %s -t %s -o %s %s"
 # PARAAT = "ParaAT.pl  -h  %s  -a  %s  -n  %s  -m muscle -p  %s  -o  %s -f axt"
 
-
 def arguments():
-    parser = argparse.ArgumentParser(prog='HGT', description='This tool identify potential horizontally transfered genes between species')
+    parser = argparse.ArgumentParser(
+        prog='HGT', 
+        description='This tool identifies potential horizontal gene transfer events between species. The input needs to be a directory containing the reference and annotation files for the species of interest. The tool will run OrthoFinder and KaKs Calculator to identify potential HGT events.',)
     parser.add_argument('-i','--input',
                         help="In this directory should be present both reference and annotation with the same root", required= True)
     # parser.add_argument('references')
@@ -38,6 +40,18 @@ def arguments():
     parser.add_argument('-o', '--output', default = "output")
     args = parser.parse_args()
     return(args)
+
+def read_fasta(file) -> Bio.File._IndexedSeqFileDict:
+    with open(file, "r") as fh:
+        fasta = SeqIO.index(SeqIO.parse(fh, "fasta"))
+    return fasta
+
+def match_fasta(fasta1: Bio.File._IndexedSeqFileDict, fasta2: Bio.File._IndexedSeqFileDict) -> dict:
+    match = {}
+    for key in fasta1:
+        if key in fasta2:
+            match[key] = (fasta1.get(key), fasta2.get(key))
+    return match
 
 def gffread(path):
     """

@@ -38,6 +38,23 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.txt,target=requirements.txt \
     python -m pip install -r requirements.txt
 
+# Include OrthoFinder in the image
+RUN apt-get update && apt-get install -y \
+    ncbi-blast+ \
+    mcl \
+    fastme \
+    diamond \
+    wget \
+    unzip \
+    wget https://github.com/davidemms/OrthoFinder/releases/latest/download/OrthoFinder.tar.gz && \
+    tar xf OrthoFinder.tar.gz && \
+    rm OrthoFinder.tar.gz
+
+# Include KaKs_Calculator in the image
+RUN wget https://github.com/davidemms/OrthoFinder/releases/latest/download/OrthoFinder.tar.gz && \
+    tar xf OrthoFinder.tar.gz && \
+    rm OrthoFinder.tar.gz
+
 # Switch to the non-privileged user to run the application.
 USER appuser
 
