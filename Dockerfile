@@ -51,9 +51,15 @@ RUN apt-get update && apt-get install -y \
     rm OrthoFinder.tar.gz
 
 # Include KaKs_Calculator in the image
-RUN wget https://github.com/davidemms/OrthoFinder/releases/latest/download/OrthoFinder.tar.gz && \
-    tar xf OrthoFinder.tar.gz && \
-    rm OrthoFinder.tar.gz
+
+RUN wget https://sourceforge.net/projects/kakscalculator2/files/KaKs_Calculator2.0.tar.gz/download && \
+    tar -xf KaKs_Calculator2.0.tar.gz && \
+    rm KaKs_Calculator2.0.tar.gz
+
+# Include paraAT in the image
+RUN wget https://download.cncb.ac.cn/bigd/tools/ParaAT2.0.tar.gz && \
+    tar -xf ParaAT2.0.tar.gz && \
+    rm ParaAT2.0.tar.gz
 
 # Switch to the non-privileged user to run the application.
 USER appuser
@@ -65,4 +71,4 @@ COPY . .
 EXPOSE 8000
 
 # Run the application.
-CMD python HGT.py -i /data/bioinf2023/PlantPath2023/genomeANDgff -OFr /data/bioinf2023/PlantPath2023/genomeANDgff/results/prot/f7b812/Results_Feb23  -v -nt 50
+# CMD python HGT.py -i /data/bioinf2023/PlantPath2023/genomeANDgff -OFr /data/bioinf2023/PlantPath2023/genomeANDgff/results/prot/f7b812/Results_Feb23  -v -nt 50

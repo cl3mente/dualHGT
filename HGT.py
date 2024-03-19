@@ -21,10 +21,14 @@ import shutil
 import matplotlib.pyplot as plt
 import ete3
 
-PARAAT = "ParaAT.pl  -h  %s  -a  %s  -n  %s   -p  %s  -o  %s -f axt"
-KAKS = "KaKs_Calculator  -i %s -o %s -m %s"
-ORTHOFINDER = "/data/bioinf2023/PlantPath2023/OrthoFinder/orthofinder -f %s -t %s -o %s %s"
-# PARAAT = "ParaAT.pl  -h  %s  -a  %s  -n  %s  -m muscle -p  %s  -o  %s -f axt"
+# PARAAT = "ParaAT.pl  -h  %s  -a  %s  -n  %s   -p  %s  -o  %s -f axt"
+# KAKS = "KaKs_Calculator  -i %s -o %s -m %s"
+# ORTHOFINDER = "/data/bioinf2023/PlantPath2023/OrthoFinder/orthofinder -f %s -t %s -o %s %s"
+
+# Docker versions
+PARAAT = "./ParaAT2.0/ParaAT2.0/._ParaAT.pl  -h  %s  -a  %s  -n  %s   -p  %s  -o  %s -f axt"
+KAKS = "./kakscalculator2/bin/KaKs_Calculator  -i %s -o %s -m %s"
+ORTHOFINDER = "./OrthoFinder/orthofinder -f %s -t %s -o %s %s"
 
 def arguments():
     parser = argparse.ArgumentParser(
