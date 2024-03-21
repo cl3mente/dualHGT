@@ -11,6 +11,7 @@ FROM ubuntu:20.04
 
 # Prevents Python from writing pyc files.
 # ENV PYTHONDONTWRITEBYTECODE=1
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Keeps Python from buffering stdout and stderr to avoid situations where
 # the application crashes without emitting any logs due to buffering.
@@ -19,19 +20,16 @@ FROM ubuntu:20.04
 WORKDIR /app
 RUN mkdir /app/input
 
-
-
-
-
 # Download python, pip and required dependencies.
 RUN apt-get update && apt-get install -y \
     wget \
     unzip \
     gffread \
-    python3 \
     sudo \
     g++ \
     make
+
+RUN apt-get install -y python3
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN apt install -y python3-pip
@@ -64,6 +62,7 @@ RUN wget https://download.cncb.ac.cn/bigd/tools/ParaAT2.0.tar.gz && \
 # Create a non-privileged user that the app will run under.
 # See https://docs.docker.com/go/dockerfile-user-best-practices/
 ARG UID=10001
+RUN apt-get install locate -y
 RUN adduser \
     --disabled-password \
     --gecos "" \
@@ -77,6 +76,10 @@ USER appuser
 
 # Copy the source code into the container.
 COPY . .
+
+ENV PATH=$PATH:/app/KaKs_Calculator3.0/src:/app/ParaAT2.0:/app/OrthoFinder
+
+
 
 VOLUME /app/input
 
