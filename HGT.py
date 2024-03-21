@@ -29,6 +29,7 @@ import ete3
 PARAAT = "./ParaAT2.0/ParaAT2.0/._ParaAT.pl  -h  %s  -a  %s  -n  %s   -p  %s  -o  %s -f axt"
 KAKS = "./kakscalculator2/bin/KaKs_Calculator  -i %s -o %s -m %s"
 ORTHOFINDER = "./OrthoFinder/orthofinder -f %s -t %s -o %s %s"
+GFFREAD = "gffread -w %s -y %s -F -g %s %s"
 
 def arguments():
     parser = argparse.ArgumentParser(
@@ -154,8 +155,17 @@ def gffread(path):
         # and then run the command, no output collection is needed as the command saves the files
         # in the specified directory
 
-        argument_cds = ["gffread", "-w", res_cds_file, "-y", res_prot_file, "-F", "-g", fasta_file, gff_file]
-        result_cds = subprocess.run(argument_cds)
+        argument_cds = GFFREAD % (res_cds_file, res_prot_file, fasta_file, gff_file)
+        #argument_cds = ["gffread", "-w", res_cds_file, "-y", res_prot_file, "-F", "-g", fasta_file, gff_file]
+        #GFFREAD = "gffread -w", res_cds_file, "-y", res_prot_file, "-F", "-g", fasta_file, gff_file]
+        
+        result_cds = subprocess.Popen(argument_cds, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = result_cds.communicate()
+        
+        if arg.verbose:
+            print(out)
+            print(err)
+        
         files = [res_cds_file, res_prot_file]
 
 
@@ -716,8 +726,10 @@ if __name__ == "__main__":
 
     arg = arguments()
 
+    print("[+] Reading the input files...")
     prot_path,prot_all_file, cds_all_file,dict_species = gffread(arg.input)
 
+    print("[+] File load complete; running Orthofinder...")
     if not arg.orthofinderResults:
         ResultsPath = orthoResults(prot_path, arg.numberThreads,arg.orthofinder,arg.verbose)
     else:
@@ -728,8 +740,10 @@ if __name__ == "__main__":
     # prot_all_file = "/data/bioinf2023/PlantPath2023/data/genomeANDgff/results/proteinfilefinal.faa"
     # cds_all_file = "/data/bioinf2023/PlantPath2023/data/genomeANDgff/results/cdsfilefinal.fas"
 
+
     dist_matrix_tree = parseOrthofinder(ResultsPath, arg.numberThreads)
     dist_matrix_tree = getHGT(dist_matrix_tree, dict_species)
+    print("[+] Orthofinder complete; running KaKs Calculator...")
 
     dist_matrix_kaks = parseKaKs(ResultsPath,arg.numberThreads,prot_all_file,cds_all_file)
     dist_matrix_kaks = getHGT(dist_matrix_kaks, dict_species)

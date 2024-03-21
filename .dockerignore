@@ -3,8 +3,9 @@
 #
 # For more help, visit the .dockerignore file reference guide at
 # https://docs.docker.com/go/build-context-dockerignore/
-**/genomeANDgff
-**/OrthoFinder
+genomeANDgff
+OrthoFinder
+*.idea*
 **/.DS_Store
 **/__pycache__
 **/.venv
@@ -31,8 +32,8 @@
 **/obj
 **/secrets.dev.yaml
 **/values.dev.yaml
-HGT/plot_data.tsv
-HGT/intersection.tsv
-HGT/HGT_candidates.tsv
+plot_data.tsv
+intersection.tsv
+HGT_candidates.tsv
 LICENSE
 README.md

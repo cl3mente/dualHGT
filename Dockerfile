@@ -5,21 +5,62 @@
 # https://docs.docker.com/go/dockerfile-reference/
 
 # Want to help us make this template better? Share your feedback here: https://forms.gle/ybq9Krt8jtBL3iCk7
-
-ARG PYTHON_VERSION=3.10.2
-FROM python:${PYTHON_VERSION}-slim as base
+FROM ubuntu:20.04
+# ARG PYTHON_VERSION=3.10.2
+# FROM python:${PYTHON_VERSION}-slim as base
 
 # Prevents Python from writing pyc files.
-ENV PYTHONDONTWRITEBYTECODE=1
+# ENV PYTHONDONTWRITEBYTECODE=1
 
 # Keeps Python from buffering stdout and stderr to avoid situations where
 # the application crashes without emitting any logs due to buffering.
-ENV PYTHONUNBUFFERED=1
+#ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
-
 RUN mkdir /app/input
 
+
+
+
+
+# Download python, pip and required dependencies.
+RUN apt-get update && apt-get install -y \
+    wget \
+    unzip \
+    gffread \
+    python3 \
+    sudo \
+    g++ \
+    make
+
+RUN ln -s /usr/bin/python3 /usr/bin/python
+RUN apt install -y python3-pip
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=bind,source=./requirements.txt,target=./requirements.txt \
+    pip install -r requirements.txt
+
+# configure the MatPlotLib tmp directory
+ENV MPLCONFIGDIR=/tmp/matplotlib
+
+# Include OrthoFinder in the image
+RUN wget https://github.com/davidemms/OrthoFinder/releases/download/2.5.5/OrthoFinder.tar.gz && \
+    tar xzvf OrthoFinder.tar.gz && \
+    rm OrthoFinder.tar.gz
+
+# Include KaKs_Calculator in the image
+RUN wget https://ngdc.cncb.ac.cn/biocode/tools/1/releases/3.0/file/download?filename=KaKs_Calculator3.0.zip -O KaKs_Calculator3.0.zip && \
+    unzip KaKs_Calculator3.0.zip && \
+    rm KaKs_Calculator3.0.zip && \ 
+    cd KaKs_Calculator3.0/src && \
+    make
+
+# Include paraAT in the image
+RUN wget https://download.cncb.ac.cn/bigd/tools/ParaAT2.0.tar.gz && \
+    tar -xf ParaAT2.0.tar.gz && \
+    rm ParaAT2.0.tar.gz
+
+# Switch to the non-privileged user to run the application.
+# Run the application.
 # Create a non-privileged user that the app will run under.
 # See https://docs.docker.com/go/dockerfile-user-best-practices/
 ARG UID=10001
@@ -32,39 +73,12 @@ RUN adduser \
     --uid "${UID}" \
     appuser
 
-# Download dependencies as a separate step to take advantage of Docker's caching.
-# Leverage a cache mount to /root/.cache/pip to speed up subsequent builds.
-# Leverage a bind mount to requirements.txt to avoid having to copy them into
-# into this layer.
-RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=bind,source=requirements.txt,target=requirements.txt \
-    python -m pip install -r requirements.txt
-# Include OrthoFinder in the image
-RUN apt-get update && apt-get install -y \
-    wget \
-    unzip
-RUN wget https://github.com/davidemms/OrthoFinder/releases/download/2.5.5/OrthoFinder.tar.gz && \
-    tar xzvf OrthoFinder.tar.gz && \
-    rm OrthoFinder.tar.gz
-# Include KaKs_Calculator in the image
-COPY KaKs_Calculator2.0.tar.gz .
-RUN tar -xf KaKs_Calculator2.0.tar.gz && \
-    rm KaKs_Calculator2.0.tar.gz
-# Include paraAT in the image
-RUN wget https://download.cncb.ac.cn/bigd/tools/ParaAT2.0.tar.gz && \
-    tar -xf ParaAT2.0.tar.gz && \
-    rm ParaAT2.0.tar.gz
-
-# Switch to the non-privileged user to run the application.
 USER appuser
 
 # Copy the source code into the container.
 COPY . .
 
-# Expose the port that the application listens on.
-EXPOSE 8000
-
 VOLUME /app/input
-# Run the application.
+
 # CMD python HGT.py -i /data/bioinf2023/PlantPath2023/genomeANDgff -OFr /data/bioinf2023/PlantPath2023/genomeANDgff/results/prot/f7b812/Results_Feb23  -v -nt 50
 # ENTRYPOINT ["python","./HGT.py"]
