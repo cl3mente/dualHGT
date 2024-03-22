@@ -5,7 +5,8 @@
 # https://docs.docker.com/go/dockerfile-reference/
 
 # Want to help us make this template better? Share your feedback here: https://forms.gle/ybq9Krt8jtBL3iCk7
-FROM ubuntu:20.04
+# FROM davidemms/orthofinder
+FROM ubuntu:22.04
 # ARG PYTHON_VERSION=3.10.2
 # FROM python:${PYTHON_VERSION}-slim as base
 
@@ -18,7 +19,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 #ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
-RUN mkdir /app/input
 
 # Download python, pip and required dependencies.
 RUN apt-get update && apt-get install -y \
@@ -57,31 +57,36 @@ RUN wget https://download.cncb.ac.cn/bigd/tools/ParaAT2.0.tar.gz && \
     tar -xf ParaAT2.0.tar.gz && \
     rm ParaAT2.0.tar.gz
 
-# Switch to the non-privileged user to run the application.
-# Run the application.
-# Create a non-privileged user that the app will run under.
-# See https://docs.docker.com/go/dockerfile-user-best-practices/
-ARG UID=10001
-RUN apt-get install locate -y
-RUN adduser \
-    --disabled-password \
-    --gecos "" \
-    --home "/nonexistent" \
-    --shell "/sbin/nologin" \
-    --no-create-home \
-    --uid "${UID}" \
-    appuser
+RUN apt-get install -y locate libc6
 
-USER appuser
+#RUN apt-get install gawk bison gcc make wget tar -y && \
+#    wget -c https://ftp.gnu.org/gnu/glibc/glibc-2.35.tar.gz && \
+#    tar -zxvf glibc-2.35.tar.gz && cd glibc-2.35 && \
+#    mkdir glibc-build && cd glibc-build && \
+#    ../configure --prefix=/opt/glibc && \
+#    make && \
+#    make install
+
+
+#RUN adduser \
+#    --disabled-password \
+#    --gecos "" \
+#    --home "/nonexistent" \
+#    --shell "/sbin/nologin" \
+#    --no-create-home \
+#    --uid "${UID}" \
+#    appuser
+#
+#USER appuser
 
 # Copy the source code into the container.
 COPY . .
 
 ENV PATH=$PATH:/app/KaKs_Calculator3.0/src:/app/ParaAT2.0:/app/OrthoFinder
 
-
-
-VOLUME /app/input
+RUN mkdir input
+RUN mkdir output
+VOLUME /output
 
 # CMD python HGT.py -i /data/bioinf2023/PlantPath2023/genomeANDgff -OFr /data/bioinf2023/PlantPath2023/genomeANDgff/results/prot/f7b812/Results_Feb23  -v -nt 50
 # ENTRYPOINT ["python","./HGT.py"]

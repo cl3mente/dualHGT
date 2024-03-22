@@ -28,7 +28,7 @@ import ete3
 # Docker versions
 PARAAT = "./ParaAT2.0/ParaAT2.0/._ParaAT.pl  -h  %s  -a  %s  -n  %s   -p  %s  -o  %s -f axt"
 KAKS = "./kakscalculator2/bin/KaKs_Calculator  -i %s -o %s -m %s"
-ORTHOFINDER = "./OrthoFinder/orthofinder -f %s -t %s -o %s %s"
+ORTHOFINDER = "orthofinder -f %s -t %s -o %s %s"
 GFFREAD = "gffread -w %s -y %s -F -g %s %s"
 
 def arguments():
@@ -424,10 +424,12 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
     # check if there's any .axt filepath from paraAT
 
     axtFiles = []
+    if not os.path.exists(kaksfolder):
+        os.makedirs(kaksfolder)
+
     for filename in os.listdir(kaksfolder):
         if filename.endswith('.axt'):
             axtFiles.append(os.path.join(kaksfolder, filename))
-
 
     if axtFiles:
         pass
