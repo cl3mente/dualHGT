@@ -328,14 +328,14 @@ def parseOrthofinder(ResultsPath: str, threads: int):
     
     return distances
 
-def kaksparallel(file):
+def kaksparallel(file: str) -> list:
     """
     Runs the KaKs calculator program in the shell.
     
     ## Args:
         file (str): The path to the .axt file to be processed.
     ## Returns:
-        list: A list containing the gene pair and their distance.
+        list_entry: A list containing the seq pair and the calculated Ks value.
 
     References:
     -----------
@@ -354,19 +354,19 @@ def kaksparallel(file):
         print(err)
 
     # read the output file and return the gene pair and their distance
-    my_list = read_kaks_file(output)
+    list_entry = read_kaks_file(output)
 
-    return my_list
+    return list_entry
 
-def read_kaks_file(kaks_filename):
+def read_kaks_file(kaks_filename: str) -> list:
     with open(kaks_filename, newline='') as resultskaks:
         next(resultskaks)
         for line in resultskaks:
             if line.strip():
                 # take the first and fourth elements of the file
-                # corresponding to the sequence name and the Ka/Ks ratio
-                my_list = [line.split('\t')[i] for i in [0, 3]]
-    return my_list
+                # corresponding to the sequence name and the Ks value
+                list_entry = [line.split('\t')[i] for i in [0, 3]]
+    return list_entry
 
 def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
     """
@@ -415,8 +415,8 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
 
                         line = f"{gene1}\t{gene2}\n"
                         output_file.write(line)
-                            # data comes in this format:
-                            #   {"gene1-gene2": "OG"}
+                        # data comes in this format:
+                        #   {"gene1-gene2": "OG"}
                         dict_match[gene1 + "-" + gene2] = group_name
 
     kaksfolder = ResultsPath + "/kaksfolder"
@@ -424,20 +424,19 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
     # check if there's any .axt filepath from paraAT
 
     axtFiles = []
-    if not os.path.exists(kaksfolder):
+
+    if os.path.exists(kaksfolder):
+        for filename in os.listdir(kaksfolder):
+            if filename.endswith('.axt'):
+                axtFiles.append(os.path.join(kaksfolder, filename))
+    else:
         os.makedirs(kaksfolder)
 
-    for filename in os.listdir(kaksfolder):
-        if filename.endswith('.axt'):
-            axtFiles.append(os.path.join(kaksfolder, filename))
-
-    if axtFiles:
-        pass
-    else:
+    if not axtFiles:
         # run paraAT in the shell.
         # This will create .axt files from the protein and CDS files
         runparaAT = PARAAT % (file_out, proteinfilefinal, cdsfilefinal, fileThreads, kaksfolder)
-        print(runparaAT)
+        print(f"Running {runparaAT}...")
         run = subprocess.Popen(runparaAT, shell=True, cwd=ResultsPath,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out,err = run.communicate()
         if arg.verbose:
@@ -447,9 +446,9 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
             if filename.endswith('.axt'):
                 axtFiles.append(os.path.join(kaksfolder, filename))
 
-    var = []
+    var = [] # `var` will collect the seq pairs and their Ks value
 
-    kaks_filepaths = []
+    kaks_filepaths = [] # `kaks_filepaths` will collect existing .kaks files, from previous KaKs calculator runs
     for filename in os.listdir(kaksfolder):
         if filename.endswith('.kaks'):
             kaks_filepaths.append(os.path.join(kaksfolder, filename))
@@ -457,12 +456,12 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
     if kaks_filepaths:
         with mp.Pool(threads) as p:
             for x in tqdm.tqdm(p.imap_unordered(read_kaks_file, kaks_filepaths), total=len(kaks_filepaths),
-                               desc="Reading KaKs files..."):
+                               desc="Reading .kaks files..."):
                 var.append(x)  # appends each entry to `var`
-                pass
+
     else: # run 'kaksparallel' function on the .axt files in parallel with multiprocessing.Pool()
         with mp.Pool(threads) as p:
-            with tqdm.tqdm(total=len(axtFiles), desc="running kaks...") as pbar:
+            with tqdm.tqdm(total=len(axtFiles), desc="Running KaKs Calculator...") as pbar:
                 for x in p.imap_unordered(kaksparallel, axtFiles):
                     # x is a list that looks like this:
                     #   ['seq_(pair?)_name', 'Ks']
@@ -478,7 +477,7 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
     # create an 'info' list with KaKs score and the gene pairs.
     #   data comes in this format:
     #   [[gene1, gene2, OG, Ks]]
-                
+
     distances = []
 
     for entry in var:
