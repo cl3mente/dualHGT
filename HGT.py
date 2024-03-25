@@ -693,13 +693,12 @@ def vennPlot(kaks_OG_list: list, tree_OG_list: list, topology_OG_list: list):
         A list of orthogroups with significantly different topology from that of the average species tree.
 
     """
-    plt.figure(figsize=(4, 4))
-    venn3([set(kaks_OG_list),
+    fig = venn3([set(kaks_OG_list),
            set(tree_OG_list),
            set(topology_OG_list)],
           set_labels=('KaKs', 'Tree', 'Topology')
           )
-    plt.show()
+    return fig
 
 def plotData(df):
     """
@@ -718,14 +717,15 @@ def plotData(df):
                     color = "type", 
                     box = True, 
                     hover_data = df.columns)
-    fig.show()
+
+    return fig
+    #fig.show()
 
 if __name__ == "__main__":
 
-    print(os.getcwd())
-    print("a")
-
     arg = arguments()
+
+    finalpath = os.join(arg.output)
 
     print("[+] Reading the input files...")
     prot_path,prot_all_file, cds_all_file,dict_species = gffread(arg.input)
@@ -741,20 +741,21 @@ if __name__ == "__main__":
     # prot_all_file = "/data/bioinf2023/PlantPath2023/data/genomeANDgff/results/proteinfilefinal.faa"
     # cds_all_file = "/data/bioinf2023/PlantPath2023/data/genomeANDgff/results/cdsfilefinal.fas"
 
-
     dist_matrix_tree = parseOrthofinder(ResultsPath, arg.numberThreads)
     dist_matrix_tree = getHGT(dist_matrix_tree, dict_species)
-    print("[+] Orthofinder complete; running KaKs Calculator...")
+    print("[+] Orthofinder run completed; running KaKs Calculator...")
 
     dist_matrix_kaks = parseKaKs(ResultsPath,arg.numberThreads,prot_all_file,cds_all_file)
     dist_matrix_kaks = getHGT(dist_matrix_kaks, dict_species)
 
     list_kaks = dist_matrix_kaks.loc[dist_matrix_kaks['HGT'] == True,'OG'].to_list()
     list_tree = dist_matrix_tree.loc[dist_matrix_tree['HGT'] == True,'OG'].to_list()
+
+    print("[+] KaKs Calculator run completed; checking topologies...")
     list_topology = get_topology(ResultsPath)
 
     if arg.verbose: # show the topology of the candidate HGT orthogroups
-        print("printing the topology of candidate HGT orthogroups:\n")
+        print("Printing the topology of candidate HGT orthogroups:\n")
         for OG in list_topology:
             single_tree_folder = os.path.join(ResultsPath, "Gene_Trees/")
             file_og = os.path.join(single_tree_folder, OG + "_tree.txt")
@@ -764,18 +765,13 @@ if __name__ == "__main__":
                 print(OG)
                 print(og_tree)
 
-    vennPlot(list_kaks, 
+    fig = vennPlot(list_kaks,
              list_tree, 
              list_topology)
+    fig.
 
     intersection = list(set([i for i in list_kaks if i in list_tree and i in list_topology]))
-    print(len(intersection))
-    inters_path = os.path.join("intersection.tsv")
-    if os.path.exists(inters_path):
-        os.remove(inters_path)
-    with open(inters_path, 'x') as f:
-        for i in intersection:
-            f.write(i + '\n')
+    print(f'[ + ] Found {len(intersection)} genes that satisfy all three criteria.')
 
     if arg.verbose:
         single_tree_folder = os.path.join(ResultsPath, "Gene_Trees/")
@@ -828,12 +824,17 @@ if __name__ == "__main__":
     """
 
     # write the final output to a .tsv file; in the form of a dataframe with scores from the KaKs, tree, and topology analyses
-    if os.path.exists('HGT_candidates.tsv'):
-        os.remove('HGT_candidates.tsv')
-    with open('HGT_candidates.tsv', 'x') as f:
+
+    os.mkdir(finalpath)
+    if os.path.exists(finalpath, 'HGT_candidates.tsv'):
+        os.remove(finalpath, 'HGT_candidates.tsv')
+    with open(os.join(finalpath, 'HGT_candidates.tsv'), 'x') as f:
         full_matrix.to_csv(f, sep='\t', index=False)
-
-
-    with open('plot_data.tsv', 'x') as f:
+    with open(os.join(finalpath, 'plot_data.tsv'), 'x') as f:
         plot_matrix.to_csv(f, sep='\t',index=False)
-    plotData(plot_matrix)
+    with open(os.join(finalpath, "HGT_violins.png"), 'x') as f:
+        fig = plotData(plot_matrix)
+        fig.write_image(f)
+    with open(os.path.join(finalpath, "intersection.tsv"), 'x') as f:
+        for i in intersection:
+            f.write(i + '\n')
