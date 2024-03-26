@@ -52,7 +52,7 @@ RUN wget https://download.cncb.ac.cn/bigd/tools/ParaAT2.0.tar.gz && \
     tar -xf ParaAT2.0.tar.gz && \
     rm ParaAT2.0.tar.gz
 
-RUN apt-get install -y locate libc6
+RUN apt-get install -y locate libc6 muscle
 
 #RUN apt-get install gawk bison gcc make wget tar -y && \
 #    wget -c https://ftp.gnu.org/gnu/glibc/glibc-2.35.tar.gz && \

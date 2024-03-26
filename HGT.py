@@ -26,8 +26,8 @@ import ete3
 # ORTHOFINDER = "/data/bioinf2023/PlantPath2023/OrthoFinder/orthofinder -f %s -t %s -o %s %s"
 
 # Docker versions
-PARAAT = "./ParaAT2.0/ParaAT2.0/._ParaAT.pl  -h  %s  -a  %s  -n  %s   -p  %s  -o  %s -f axt"
-KAKS = "./kakscalculator2/bin/KaKs_Calculator  -i %s -o %s -m %s"
+PARAAT = "ParaAT.pl -h %s -a %s -n %s -p %s -o %s -f axt -v"
+KAKS = "KaKs -i %s -o %s -m %s"
 ORTHOFINDER = "orthofinder -f %s -t %s -o %s %s"
 GFFREAD = "gffread -w %s -y %s -F -g %s %s"
 
@@ -104,7 +104,7 @@ def gffread(path):
     species_unique_number = [species_unique , len(species_unique)]
 
     if len(filename) % 2 != 0:
-        print("Error: odd number of file, file do not match")
+        print("Error: odd number of files, files not matching")
         raise SystemExit
 
     try:
@@ -382,9 +382,10 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
     """
 
     # Create the 'proc.txt' file to store the number of threads used (required by ParaAT and KaKs Calculator)
-    fileThreads = ResultsPath + "/proc"
+    # TODO risolvere problema con proc (Error in opening file: ..//app/input/results/prot/7d3013/Results_Mar25/proc)
+    fileThreads = os.path.join(os.getcwd(), ResultsPath, "proc")
     with open(fileThreads, "w") as fh:
-        fh.write(str(threads) +"\n")
+        fh.write(str(threads) +'\n')
 
     # Create a dictionary to match genes to orthogroups
     data = pd.read_csv(ResultsPath  + "/Orthogroups/Orthogroups.tsv", sep="\t")
@@ -421,34 +422,36 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
                         #   {"gene1-gene2": "OG"}
                         dict_match[gene1 + "-" + gene2] = group_name
 
-    kaksfolder = ResultsPath + "/kaksfolder"
+    kaksfolder = os.path.join(os.getcwd(), ResultsPath, "KaKsfolder")
 
     # check if there's any .axt filepath from paraAT
 
-    axtFiles = []
-
-    if not os.path.exists(kaksfolder):
-        os.makedirs(kaksfolder)
-    else:
-        for filename in os.listdir(kaksfolder):
-            if filename.endswith('.axt'):
-                axtFiles.append(os.path.join(kaksfolder, filename))
-
-    if not axtFiles: # run paraAT in the shell.
-        # This will create .axt files from the protein and CDS files
-        runparaAT = PARAAT % (file_out, proteinfilefinal, cdsfilefinal, fileThreads, kaksfolder)
-        print(f"Running {runparaAT}...")
-        run = subprocess.Popen(runparaAT, shell=True, cwd=ResultsPath,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        out,err = run.communicate()
-        if arg.verbose:
-            print(out)
-            print(err)
-        for filename in os.listdir(kaksfolder):
-            if filename.endswith('.axt'):
-                axtFiles.append(os.path.join(kaksfolder, filename))
-
+    axtFiles = [] # `axtFiles will collect existing .axt alignment files
     var = [] # `var` will collect the seq pairs and their Ks value
     kaks_filepaths = [] # `kaks_filepaths` will collect existing .kaks files, from previous KaKs calculator runs
+
+
+    '''if os.path.exists(kaksfolder) and os.path.getsize(kaksfolder) > 0:
+        for filename in os.listdir(kaksfolder):
+            if filename.endswith('.axt'):
+                axtFiles.append(os.path.join(kaksfolder, filename))'''
+
+    # else: # run ParaAT in the shell.
+    # This will create .axt files from the protein and CDS files
+    runparaAT = PARAAT % (file_out,
+                          proteinfilefinal,
+                          cdsfilefinal,
+                          fileThreads,
+                          kaksfolder)
+    print(f"Running {runparaAT}...")
+    run = subprocess.Popen(runparaAT, shell=True, cwd=ResultsPath,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out,err = run.communicate()
+    if arg.verbose:
+        print(out)
+        print(err)
+    for filename in os.listdir(kaksfolder):
+        if filename.endswith('.axt'):
+            axtFiles.append(os.path.join(kaksfolder, filename))
 
     for filename in os.listdir(kaksfolder):
         if filename.endswith('.kaks'):
@@ -681,7 +684,6 @@ def get_topology(ResultsPath):
 
 def vennPlot(kaks_OG_list: list, tree_OG_list: list, topology_OG_list: list):
     """
-
     Make a Venn Diagram. Easy.
 
     Parameters:
@@ -726,28 +728,29 @@ if __name__ == "__main__":
 
     arg = arguments()
 
-    output_folder = os.join(arg.output)
+    output_folder = os.path.join(arg.output)
 
     print("[+] Reading the input files...")
     prot_path,prot_all_file, cds_all_file,dict_species = gffread(arg.input)
 
-    print("[+] File load complete; running Orthofinder...")
     if not arg.orthofinderResults:
+        print("[+] File load complete; running Orthofinder...")
         ResultsPath = orthoResults(prot_path, arg.numberThreads,arg.orthofinder,arg.verbose)
     else:
+        print(f"[+] Scanning {arg.orthofinderResults} for previous OrthoFinder results")
         ResultsPath = arg.orthofinderResults
 
-    # shutil.rmtree("/data/bioinf2023/PlantPath2023/data/genomeANDgff/results/prot/16cb6a/Results_Nov28/kaksfolder", )
-    # ResultsPath = "/data/bioinf2023/PlantPath2023/data/genomeANDgff/results/prot/16cb6a/Results_Nov28"
-    # prot_all_file = "/data/bioinf2023/PlantPath2023/data/genomeANDgff/results/proteinfilefinal.faa"
-    # cds_all_file = "/data/bioinf2023/PlantPath2023/data/genomeANDgff/results/cdsfilefinal.fas"
 
     dist_matrix_tree = parseOrthofinder(ResultsPath, arg.numberThreads)
     dist_matrix_tree = getHGT(dist_matrix_tree, dict_species)
-    print("[+] Orthofinder run completed; running KaKs Calculator...")
 
-    dist_matrix_kaks = parseKaKs(ResultsPath,arg.numberThreads,prot_all_file,cds_all_file)
+    print("[+] Orthofinder scan completed; running KaKs Calculator...")
+    prot_all_file = os.path.join(os.getcwd(), prot_all_file)
+    cds_all_file = os.path.join(os.getcwd(), cds_all_file)
+    dist_matrix_kaks = parseKaKs(ResultsPath, arg.numberThreads, prot_all_file, cds_all_file)
     dist_matrix_kaks = getHGT(dist_matrix_kaks, dict_species)
+
+
 
     list_kaks = dist_matrix_kaks.loc[dist_matrix_kaks['HGT'] == True,'OG'].to_list()
     list_tree = dist_matrix_tree.loc[dist_matrix_tree['HGT'] == True,'OG'].to_list()
@@ -755,7 +758,7 @@ if __name__ == "__main__":
     print("[+] KaKs Calculator run completed; checking topologies...")
     list_topology = get_topology(ResultsPath) # get the list of orthogroups with significantly different topology from that of the average species tree
 
-    if arg.verbose: # show the topology of the abnormal-topology candidate HGT orthogroups
+    if False: # show the topology of the abnormal-topology candidate HGT orthogroups
         print("Printing the topology of candidate HGT orthogroups:\n")
         for OG in list_topology:
             single_tree_folder = os.path.join(ResultsPath, "Gene_Trees/")
@@ -768,7 +771,7 @@ if __name__ == "__main__":
 
 
     # Create a Venn diagram of the criteria
-    vennpath = os.join(output_folder, "vennplot.png")
+    vennpath = os.path.join(output_folder, "vennplot.png")
     fig = vennPlot(list_kaks,
              list_tree, 
              list_topology)
@@ -776,9 +779,10 @@ if __name__ == "__main__":
 
     # Find the intersection of the three criteria
     intersection = list(set([i for i in list_kaks if i in list_tree and i in list_topology]))
-    print(f'[ + ] Found {len(intersection)} genes that satisfy all three criteria.')
+    print(f'[+] Found {len(intersection)} genes that satisfy all three criteria.')
 
-    if arg.verbose: # Print the HGT-candidate trees
+    # TODO da cambiare
+    if False: # Print the HGT-candidate trees
         single_tree_folder = os.path.join(ResultsPath, "Gene_Trees/")
         for i in intersection:
             file_og = os.path.join(single_tree_folder, i + "_tree.txt")
@@ -833,14 +837,11 @@ if __name__ == "__main__":
     """
 
     # Write the final outputs to a .tsv file
-    os.mkdir(output_folder)
-    if os.path.exists(output_folder, 'HGT_candidates.tsv'):
-        os.remove(output_folder, 'HGT_candidates.tsv')
-    with open(os.join(output_folder, 'HGT_candidates.tsv'), 'x') as f:
+    with open(os.path.join(output_folder, 'HGT_candidates.tsv'), 'x') as f:
         full_matrix.to_csv(f, sep='\t', index=False)
-    with open(os.join(output_folder, 'plot_data.tsv'), 'x') as f:
+    with open(os.path.join(output_folder, 'plot_data.tsv'), 'x') as f:
         plot_matrix.to_csv(f, sep='\t',index=False)
-    with open(os.join(output_folder, "HGT_violins.png"), 'x') as f:
+    with open(os.path.join(output_folder, "HGT_violins.png"), 'x') as f:
         fig = plotData(plot_matrix)
         fig.write_image(f)
     with open(os.path.join(output_folder, "intersection.tsv"), 'x') as f:
