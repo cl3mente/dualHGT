@@ -15,7 +15,7 @@ Example run command:
 
 bind-mount the directory containing your input folder to a specified input folder in the container:
 
-`docker run -v $PWD/:/app/input cl3mente/finalhgt -i input -nt `
+`docker run -v $PWD/:/app/input cl3mente/finalhgt -i input -nt [...]`
 
 ## Arguments
 
