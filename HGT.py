@@ -46,7 +46,7 @@ def arguments():
     args = parser.parse_args()
     return(args)
 
-def read_fasta(file) -> Bio.File._IndexedSeqFileDict:
+def read_fasta(file) -> Bio.File._IndexedSeqFileDict: # read a fasta file and return the index
     with open(file, "r") as fh:
         fasta = SeqIO.index(SeqIO.parse(fh, "fasta"))
     return fasta
@@ -89,7 +89,9 @@ def gffread(path):
         with open(file + "_mod_gff", "w") as fho:
             with open(file, "r") as fh:
                 for line in fh:
-                    if len(line.split("\t")) == 9 and line.split("\t")[2].startswith("mRNA"):
+                    if line.startswith("#"):
+                        continue
+                    elif len(line.split("\t")) == 9 and line.split("\t")[2].startswith("mRNA"):
                         count += 1
                         genes_collection = [file.rsplit(".", 1)[0].rsplit("/", 1)[1], line.replace("\t", " ").rstrip()]
                         line = line.rstrip() + ";HGT=gene" + str(count) #TODO to add an index for each genome file # ?
@@ -150,10 +152,6 @@ def gffread(path):
         res_prot_file = prot_path + "/" + res_name + "_prot.faa"
         fasta_file = path + "/" + fna_f_name
         gff_file = path + "/" + gff_f_name
-
-        # we prepared the command to be run by the command prompt as a list of strings
-        # and then run the command, no output collection is needed as the command saves the files
-        # in the specified directory
 
         argument_cds = GFFREAD % (res_cds_file, res_prot_file, fasta_file, gff_file)
         #argument_cds = ["gffread", "-w", res_cds_file, "-y", res_prot_file, "-F", "-g", fasta_file, gff_file]
@@ -383,7 +381,7 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
 
     # Create the 'proc.txt' file to store the number of threads used (required by ParaAT and KaKs Calculator)
     # TODO risolvere problema con proc (Error in opening file: ..//app/input/results/prot/7d3013/Results_Mar25/proc)
-    fileThreads = os.path.join(os.getcwd(), ResultsPath, "proc")
+    fileThreads = os.path.join(os.getcwd(), ResultsPath, "proc.txt")
     with open(fileThreads, "w") as fh:
         fh.write(str(threads) +'\n')
 
@@ -728,7 +726,11 @@ if __name__ == "__main__":
 
     arg = arguments()
 
-    output_folder = os.path.join(arg.output)
+    # Create a folder with date and time of the run to store the output
+    from datetime import datetime
+    current_date = datetime.now()
+    output_folder = os.path.join('/app/input', 'output', current_date.strftime("HGTResults_%d_%b_%Y__%H_%M"))
+    os.makedirs(output_folder)
 
     print("[+] Reading the input files...")
     prot_path,prot_all_file, cds_all_file,dict_species = gffread(arg.input)
@@ -836,14 +838,14 @@ if __name__ == "__main__":
     full_matrix['gene_1'] = names
     """
 
-    # Write the final outputs to a .tsv file
     with open(os.path.join(output_folder, 'HGT_candidates.tsv'), 'x') as f:
         full_matrix.to_csv(f, sep='\t', index=False)
     with open(os.path.join(output_folder, 'plot_data.tsv'), 'x') as f:
         plot_matrix.to_csv(f, sep='\t',index=False)
-    with open(os.path.join(output_folder, "HGT_violins.png"), 'x') as f:
-        fig = plotData(plot_matrix)
-        fig.write_image(f)
+    # with open(os.path.join(output_folder, "HGT_violins.png"), 'x') as f:
+    import plotly
+    fig = plotData(plot_matrix)
+    plotly.offline.plot(fig, filename=os.path.join(output_folder, "HGT_violins.png"))
     with open(os.path.join(output_folder, "intersection.tsv"), 'x') as f:
         for i in intersection:
             f.write(i + '\n')
