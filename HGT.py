@@ -20,6 +20,7 @@ import numpy as np
 import shutil
 import matplotlib.pyplot as plt
 import ete3
+#import gffutils
 
 # PARAAT = "ParaAT.pl  -h  %s  -a  %s  -n  %s   -p  %s  -o  %s -f axt"
 # KAKS = "KaKs_Calculator  -i %s -o %s -m %s"
@@ -765,8 +766,8 @@ if __name__ == "__main__":
     # Create a folder with date and time of the run to store the output
     from datetime import datetime
     current_date = datetime.now()
-    output_folder = os.path.join('/app/input', 'output', current_date.strftime("HGTResults_%d_%b_%Y__%H_%M"))
-    #os.makedirs(output_folder)
+    output_folder = os.path.join(arg.input, 'output', current_date.strftime("HGTResults_%d_%b_%Y__%H_%M"))
+    os.makedirs(output_folder)
 
     print("[+] Reading the input files...")
 
