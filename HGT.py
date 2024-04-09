@@ -20,6 +20,7 @@ import numpy as np
 import shutil
 import matplotlib.pyplot as plt
 import ete3
+#import gffutils
 
 # PARAAT = "ParaAT.pl  -h  %s  -a  %s  -n  %s   -p  %s  -o  %s -f axt"
 # KAKS = "KaKs_Calculator  -i %s -o %s -m %s"
@@ -46,10 +47,44 @@ def arguments():
     args = parser.parse_args()
     return(args)
 
-def read_fasta(file) -> Bio.File._IndexedSeqFileDict: # read a fasta file and return the index
+def read_fasta(file) -> Bio.File._IndexedSeqFileDict: # read a fasta file and return the record collection (dict-like)
     with open(file, "r") as fh:
-        fasta = SeqIO.index(SeqIO.parse(fh, "fasta"))
+        fasta = SeqIO.index(fh, "fasta")
     return fasta
+
+def prepareInput(input: str):
+
+    res_path = os.path.join(input, "results")
+    prot_path = os.path.join(res_path, 'prot')
+    cds_path = os.path.join(res_path, 'cds')
+
+    try:
+        if not os.path.exists(res_path):
+            Path(res_path).mkdir()
+        if not os.path.exists(prot_path):
+            Path(prot_path).mkdir()
+        if not os.path.exists(cds_path):
+            Path(cds_path).mkdir()
+    except FileExistsError:
+        print("Warning: res folder already exist")
+    except Exception as e:
+        print(f"Error creating directory '{res_path}': {e}")
+        raise SystemExit
+
+    prot_all_file =  res_path + '/proteinfilefinal.faa'
+    cds_all_file =  res_path + '/cdsfilefinal.fas'
+
+    prot_all = []
+    cds_all = []
+
+    for file in os.walk(input):
+        if file.suffix == '.faa':
+            content = read_fasta(file)
+        if file.suffix == '.fna':
+            content = read_fasta(file)
+
+
+    return (res_path, prot_all_file, cds_all_file, gene_association)
 
 def match_fasta(fasta1: Bio.File._IndexedSeqFileDict, fasta2: Bio.File._IndexedSeqFileDict) -> dict:
     match = {}
@@ -100,10 +135,16 @@ def gffread(path):
                     else:
                         fho.write(line)
 
+    """ tentativo di usare gffutils al posto di gffread
+    with open(file + "_mod_gff", "w") as fho:
+        with open(file, "r") as fh:
+            for rec in GFF.parse(fh)
+                if 'mRNA' in rec.gff_source_type:
+                    fho.write(f'{rec.ID}{rec.seq}')
+    """
+
     extensions = [".fna", ".fasta", ".gff_mod_gff", ".gff3_mod_gff", ".gtf_mod_gff"]    # pick the modified gff files and the fasta files
     filename = [file.name for file in folder.iterdir() if file.suffix in extensions]
-    species_unique = list(set(species_name))
-    species_unique_number = [species_unique , len(species_unique)]
 
     if len(filename) % 2 != 0:
         print("Error: odd number of files, files not matching")
@@ -380,7 +421,6 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
     """
 
     # Create the 'proc.txt' file to store the number of threads used (required by ParaAT and KaKs Calculator)
-    # TODO risolvere problema con proc (Error in opening file: ..//app/input/results/prot/7d3013/Results_Mar25/proc)
     fileThreads = os.path.join(os.getcwd(), ResultsPath, "proc.txt")
     with open(fileThreads, "w") as fh:
         fh.write(str(threads) +'\n')
@@ -729,10 +769,12 @@ if __name__ == "__main__":
     # Create a folder with date and time of the run to store the output
     from datetime import datetime
     current_date = datetime.now()
-    output_folder = os.path.join('/app/input', 'output', current_date.strftime("HGTResults_%d_%b_%Y__%H_%M"))
+    output_folder = os.path.join(arg.input, 'output', current_date.strftime("HGTResults_%d_%b_%Y__%H_%M"))
     os.makedirs(output_folder)
 
     print("[+] Reading the input files...")
+
+
     prot_path,prot_all_file, cds_all_file,dict_species = gffread(arg.input)
 
     if not arg.orthofinderResults:

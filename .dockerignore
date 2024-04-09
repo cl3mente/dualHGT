@@ -30,6 +30,7 @@ OrthoFinder
 **/node_modules
 **/npm-debug.log
 **/obj
+**/venv
 **/secrets.dev.yaml
 **/values.dev.yaml
 plot_data.tsv
