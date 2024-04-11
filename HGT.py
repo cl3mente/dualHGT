@@ -424,6 +424,7 @@ def parseKaKs(ResultsPath, arg, proteinfilefinal,cdsfilefinal):
 
     # Create the 'proc.txt' file to store the number of threads used (required by ParaAT and KaKs Calculator)
     fileThreads = os.path.join(arg.input, "proc.txt")
+    fileThreads = os.path.join(os.getcwd(), ResultsPath, "proc.txt")
     with open(fileThreads, "w") as fh:
         fh.write(str(arg.threads) +'\n')
 
