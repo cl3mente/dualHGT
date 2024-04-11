@@ -39,13 +39,23 @@ def arguments():
         description='This tool identifies potential horizontal gene transfer events between species. The input needs to be a directory containing the reference and annotation files for the species of interest. The tool will run OrthoFinder and KaKs Calculator to identify potential HGT events.',)
     parser.add_argument('-i','--input',
                         help="In this directory should be present both reference and annotation with the same root", required= True)
-    # parser.add_argument('references')
-    parser.add_argument('-OF', '--orthofinder' ,type = str, default="")
-    parser.add_argument('-OFr', '--orthofinderResults', type=str)
-    parser.add_argument('-v', '--verbose', action='store_true')
-    parser.add_argument('-nt', '--numberThreads',type=int, help='Number of parallel threads to use')
-    parser.add_argument('-o', '--output', default = "output")
+    parser.add_argument('-gff', '--gffread', 
+                        action='store_true',
+                        help="Use this flag if the input files are a .fasta genome with its .gff annotation. Default is FASTA.")
+    parser.add_argument('-OFr', '--orthofinderResults', 
+                        type=str,
+                        help="The path to a previous OrthoFinder results folder. If not provided, the tool will run Orthofinder.")
+    parser.add_argument('-nt', '--numberThreads',
+                        type=int, 
+                        help='Number of parallel threads to use')
+    parser.add_argument('-o', '--output', 
+                        default = "output",
+                        help="The name of the output file. Default is a folder named `output`.")
+    parser.add_argument('-v', '--verbose', 
+                        action='store_true')
+
     args = parser.parse_args()
+
     return(args)
 
 def read_fasta(file) -> Bio.File._IndexedSeqFileDict: # read a fasta file and return the record collection (dict-like)
@@ -53,7 +63,7 @@ def read_fasta(file) -> Bio.File._IndexedSeqFileDict: # read a fasta file and re
         fasta = SeqIO.index(fh, "fasta")
     return fasta
 
-def prepareInput(input: str):
+def prepareInput(input: str): # TODO work in progress, this function should trigger the .faa-.fna behavior (should be the default instead of gffread IMO)
 
     res_path = os.path.join(input, "results")
     prot_path = os.path.join(input, 'prot')
@@ -78,15 +88,21 @@ def prepareInput(input: str):
     prot_all = ''
     cds_all = ''
 
+    gene_association = {}
 
     # separate the protein and CDS files in the input directory in two distinct folders
     # for this to work, the protein files should have the .faa extension and the CDS files should have the .fna extension
+    count=1
     for file in os.walk(input):
         if file.suffix == '.faa':
+            for aa in SeqIO.parse(file, "fasta"):
+                gene_association[aa.id] = f'gene{count}'
+                aa.id = f'gene{count}'
             with open(file,'r') as fh:
                 prot_all += fh.read()
             shutil.copy(file, prot_path)
         if file.suffix == '.fna':
+            cds = SeqIO.index(file, "fasta")
             with open(file,'r') as fh:
                 cds_all += fh.read()
             shutil.copy(file,cds_path)
@@ -96,9 +112,9 @@ def prepareInput(input: str):
     with open(cds_all_file, 'w') as fh:
         fh.write(cds_all)
 
-    return (res_path, prot_all_file, cds_all_file)# , gene_association)
+    return (res_path, prot_all_file, cds_all_file, gene_association)
 
-def gffread(path):
+def gffread(arg):
     """
     Reads GFF files, modifies them, and performs file operations.
 
@@ -111,49 +127,19 @@ def gffread(path):
         tuple: A tuple containing the paths to the protein files, the directory of two .fasta files (AA and DNA)
         and a gene association dictionary (matching a gene code to its original ID in the genome).
     """
-
-    gene_association = {}   # gene_association is a dict used to save the mapping between the tag and the actual gene name
-
-    res_path = os.path.join(path , "results")
+    res_path = os.path.join(arg.input , "results")
     prot_path = os.path.join(res_path , "prot")
     cds_path =os.path.join(res_path , "cds")
-    folder = Path(path)
+    input_folder = Path(arg.input)
 
-    # from the specified directory (parameter 'path') retrieve the name of all .gff files
-    gff = [".gff", ".gff3", ".gtf"]
-    filename_gff = [os.path.join(folder, file.name) for file in folder.iterdir() if file.suffix in gff]
-    count = 0
-    species_name = []
-    
-    for file in filename_gff:
-        with open(file + "_mod_gff", "w") as fho:
-            with open(file, "r") as fh:
-                for line in fh:
-                    if line.startswith("#"):
-                        continue
-                    elif len(line.split("\t")) == 9 and line.split("\t")[2].startswith(("mRNA", "CDS")):
-                        count += 1
-                        genes_collection = [file.rsplit(".", 1)[0].rsplit("/", 1)[1], line.replace("\t", " ").rstrip()]
-                        line = line.rstrip() + ";HGT=gene" + str(count) #TODO to add an index for each genome file # ?
-                        fho.write(line + "\n")
-                        gene_association["gene" + str(count)] = genes_collection
-                    else:
-                        fho.write(line)
+    # parse the gff files. this function also adds the TAG ... and modifies the gff into .gff_mod_gff
+    gene_association = parse_gff(input_folder)
 
-    """ tentativo di usare gffutils al posto di gffread
-    with open(file + "_mod_gff", "w") as fho:
-        with open(file, "r") as fh:
-            for rec in GFF.parse(fh)
-                if 'mRNA' in rec.gff_source_type:
-                    fho.write(f'{rec.ID}{rec.seq}')
-    """
+    # pick the modified gff files and the fasta files from the input folder. (These must be the genome and the gff files)
+    extensions = [".fna", ".fasta", ".gff_mod_gff", ".gff3_mod_gff", ".gtf_mod_gff"]
+    filename = [file.name for file in input_folder.iterdir() if file.suffix in extensions]
 
-    extensions = [".fna", ".fasta", ".gff_mod_gff", ".gff3_mod_gff", ".gtf_mod_gff"]    # pick the modified gff files and the fasta files
-    filename = [file.name for file in folder.iterdir() if file.suffix in extensions]
-
-    if len(filename) % 2 != 0:
-        print("Error: odd number of files, files not matching")
-        raise SystemExit
+    assert (len(filename) % 2) != 0, "Error: expected 2 files per species. Check your input?"
 
     try:
         if not os.path.exists(res_path):
@@ -178,51 +164,12 @@ def gffread(path):
     # we created a nested list with NOT sorted file that are matched
 
     for check in file_matched:
-        assert len(check) != 2, f"Error: expected 2 files, got {len(check)}. Check your input."
+        assert len(check) != 2, f"Error: expected 2 files for species {check}, got {len(check)}. Check your input."
 
-    for x in file_matched:
+    # here the gffread run will create *.faa_mod.fasta and *.fas_mod.fasta files in the prot and cds folders
+    run_gffread(arg, file_matched)
 
-        # in these list comprehension we take the first value from the list that
-        # that contains only 1 value that is the file name that ends with the specified
-        # extensions then we save the file name by removing the extension
-
-        gff_f_name = str(next((f_name for f_name in x if f_name.endswith(("_mod_gff"))), None))
-        fna_f_name = str(next((f_name for f_name in x if f_name.endswith((".fna", ".fasta"))), None))
-        res_name = str(gff_f_name.rsplit(".", 1)[0])
-
-        # we specify where the files are going to be saved and the name of the saved file
-
-        res_cds_file = cds_path + "/" + res_name + "_cds.fas"
-        res_prot_file = prot_path + "/" + res_name + "_prot.faa"
-        fasta_file = path + "/" + fna_f_name
-        gff_file = path + "/" + gff_f_name
-        # "gffread -w %s -y %s -F -g %s %s"
-        argument_cds = GFFREAD % (res_cds_file, res_prot_file, fasta_file, gff_file)
-        #argument_cds = ["gffread", "-w", res_cds_file, "-y", res_prot_file, "-F", "-g", fasta_file, gff_file]
-        #GFFREAD = "gffread -w", res_cds_file, "-y", res_prot_file, "-F", "-g", fasta_file, gff_file]
-        
-        result_cds = subprocess.Popen(argument_cds, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        out, err = result_cds.communicate()
-        if arg.verbose:
-            print(out)
-            print(err)
-        
-        files = [res_cds_file, res_prot_file]
-
-
-        for file in files:
-            with open((file + "_mod.fasta"), "w") as Ffile:
-                for record in SeqIO.parse(file, "fasta"):
-                    tmp = record.description.split("HGT=")[1]
-                    if ";" in tmp:
-                        tmp = tmp.split(";")[0]
-                    record.id = tmp
-                    record.description = ""
-                    SeqIO.write(record, Ffile, "fasta")
-
-        os.remove(res_cds_file)
-        os.remove(res_prot_file)
-
+    # Make a collection .fasta of all prot sequences and another .fasta with all cds sequences
     prot_all_file =  res_path + '/proteinfilefinal.faa'
     cds_all_file =  res_path + '/cdsfilefinal.fas' 
     cmd = 'cat ' + prot_path + '/*.faa_mod.fasta' + ' > ' + prot_all_file   # this .fasta file is a collection of all the aminoacid sequences
@@ -236,6 +183,113 @@ def gffread(path):
     #   the protein path
 
     return (prot_path, prot_all_file, cds_all_file, gene_association)
+
+def run_gffread(arg, file_matched): # Runs gffread for each species' gff-fasta pair
+
+    res_path = os.path.join(arg.input , "results")
+    prot_path = os.path.join(res_path , "prot")
+    cds_path =os.path.join(res_path , "cds")
+
+    for x in file_matched:
+
+        # pick the names of gff file names and fasta file names from the dictionary.
+        # this is why it's important to have 2 files per species in the gff-parsing behavior
+
+        gff_f_name = str(next((f_name for f_name in x if f_name.endswith(("_mod_gff"))), None))
+        fna_f_name = str(next((f_name for f_name in x if f_name.endswith((".fna", ".fasta"))), None))
+        res_name = str(gff_f_name.rsplit(".", 1)[0]) # this is the name that will be assigned to cds and prot sequence files
+
+        res_cds_file = cds_path + "/" + res_name + "_cds.fas"
+        res_prot_file = prot_path + "/" + res_name + "_prot.faa"
+        fasta_file = os.path.join(arg.input, fna_f_name)
+        gff_file = os.path.join(arg.input, gff_f_name)
+        
+        # run gffread to extract the CDS and protein sequences based off of the GFF annotation and FASTA genome.
+        # the command is:
+            # "gffread -w %s -y %s -F -g %s %s"
+            # -w is the output file for the CDS sequences
+            # -y is the output file for the protein sequences
+            # -F is the flag to extract the CDS and protein sequences
+            # -g is the reference genome
+            # the last argument is the GFF file
+        cmd = GFFREAD % (res_cds_file, res_prot_file, fasta_file, gff_file)
+        result_cds = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = result_cds.communicate()
+        if arg.verbose:
+            print(out)
+            print(err)
+        files = [res_cds_file, res_prot_file] # these are the paths to cds and prot sequences
+
+        # here the program replaces the name of the sequence with the unique gene HGT tag
+
+        for aa in SeqIO.parse(res_prot_file, "fasta"):
+            for cds in SeqIO.parse(res_cds_file, "fasta"):
+                if aa.id == cds.id: # TODO this could cause problems. The ID should be the same between aa and cds but its not guaranteed
+                    try:
+                        tmpaa = aa.description.split("HGT=")[1]
+                    except IndexError:
+                        print(f"Error: Protein (ID = {aa.id}) has no HGT tag in the description. \nAssigning a random gene tag.")
+                        randomCode = binascii.hexlify(os.urandom(3)).decode('utf8')
+                        tmpaa = f'gene-{randomCode}'
+                    else:
+                        if ";" in tmpaa:
+                            tmpaa = tmpaa.split(";")[0]
+                        aa.id = tmpaa
+
+                    try:
+                        tmpcds = cds.description.split("HGT=")[1] # this gene tag should be in the seq description ... but ??
+                    except IndexError:
+                        print(f"Error: CDS (ID = {cds.id}) has no HGT tag in the description. \nAssigning a random gene tag.")
+                        randomCode = binascii.hexlify(os.urandom(3)).decode('utf8')
+                        tmpcds = f'gene-{randomCode}'
+                    else:
+                        if ";" in tmpcds:
+                            tmpcds = tmpcds.split(";")[0]
+                        cds.id = tmpcds
+
+                    # save changes to new, 'modified', .fasta files
+                    with open((res_prot_file + "_mod.fasta"), "w") as Ffileaa, open((res_cds_file + "_mod.fasta"), "w") as Ffilecds:
+                        SeqIO.write(aa, Ffileaa, "fasta")
+                        SeqIO.write(cds, Ffilecds, "fasta")
+
+        # Old code handling the gene tag
+        # for file in files:
+        #     with open((file + "_mod.fasta"), "w") as Ffile:
+        #         for record in SeqIO.parse(file, "fasta"):
+        #             tmp = record.description.split("HGT=")[1] # this gene tag should be in the seq description ... but ??
+        #             if ";" in tmp:
+        #                 tmp = tmp.split(";")[0]
+        #             record.id = tmp
+        #             record.description = ""
+        #             SeqIO.write(record, Ffile, "fasta")
+
+        os.remove(res_cds_file)
+        os.remove(res_prot_file)
+
+def parse_gff(folder):
+
+    gene_association = {}   # gene_association is a dict used to save the mapping between the tag and the actual gene name
+
+    gff = [".gff", ".gff3", ".gtf"]
+    filename_gff = [os.path.join(folder, file.name) for file in folder.iterdir() if file.suffix in gff]
+    count = 0
+    
+    for file in filename_gff:
+        with open(file + "_mod_gff", "w") as fho:
+            with open(file, "r") as fh:
+                for line in fh:
+                    if line.startswith("#"):
+                        continue
+                    elif len(line.split("\t")) == 9 and line.split("\t")[2].startswith(("mRNA", "CDS")):
+                        count += 1
+                        genes_collection = [file.rsplit(".", 1)[0].rsplit("/", 1)[1], line.replace("\t", " ").rstrip()]
+                        line = line.rstrip() + ";HGT=gene" + str(count) #TODO to add an index for each genome file # ?
+                        fho.write(line + "\n")
+                        gene_association["gene" + str(count)] = genes_collection
+                    else:
+                        fho.write(line)
+
+    return gene_association
 
 def orthoResults(prot_path, arg):
     """
@@ -778,7 +832,7 @@ if __name__ == "__main__":
 
 
     if arg.gff:
-        prot_path, prot_all_file, cds_all_file, dict_species = gffread(arg.input)
+        prot_path, prot_all_file, cds_all_file, dict_species = gffread(arg)
     else:
         prot_path, prot_all_file, cds_all_file, dict_species = prepareInput(arg.input)
 
@@ -833,12 +887,12 @@ if __name__ == "__main__":
     # TODO da cambiare
     if False: # Print the HGT-candidate trees
         single_tree_folder = os.path.join(ResultsPath, "Gene_Trees/")
-        for i in intersection:
-            file_og = os.path.join(single_tree_folder, i + "_tree.txt")
+        for aa in intersection:
+            file_og = os.path.join(single_tree_folder, aa + "_tree.txt")
             with open(file_og, "r") as fh:
                 og_single = fh.read()
             og_tree = ete3.Tree(og_single)
-            print(i)
+            print(aa)
             print(og_tree)
 
     # TODO togliere i self
@@ -894,5 +948,5 @@ if __name__ == "__main__":
     fig = plotData(plot_matrix)
     plotly.offline.plot(fig, filename=os.path.join(output_folder, "HGT_violins.png"))
     with open(os.path.join(output_folder, "intersection.tsv"), 'x') as f:
-        for i in intersection:
-            f.write(i + '\n')
+        for aa in intersection:
+            f.write(aa + '\n')
