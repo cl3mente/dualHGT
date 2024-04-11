@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from itertools import combinations
 from collections import defaultdict
@@ -55,8 +56,8 @@ def read_fasta(file) -> Bio.File._IndexedSeqFileDict: # read a fasta file and re
 def prepareInput(input: str):
 
     res_path = os.path.join(input, "results")
-    prot_path = os.path.join(res_path, 'prot')
-    cds_path = os.path.join(res_path, 'cds')
+    prot_path = os.path.join(input, 'prot')
+    cds_path = os.path.join(input, 'cds')
 
     try:
         if not os.path.exists(res_path):
@@ -74,24 +75,28 @@ def prepareInput(input: str):
     prot_all_file =  res_path + '/proteinfilefinal.faa'
     cds_all_file =  res_path + '/cdsfilefinal.fas'
 
-    prot_all = []
-    cds_all = []
+    prot_all = ''
+    cds_all = ''
 
+
+    # separate the protein and CDS files in the input directory in two distinct folders
+    # for this to work, the protein files should have the .faa extension and the CDS files should have the .fna extension
     for file in os.walk(input):
         if file.suffix == '.faa':
-            content = read_fasta(file)
+            with open(file,'r') as fh:
+                prot_all += fh.read()
+            shutil.copy(file, prot_path)
         if file.suffix == '.fna':
-            content = read_fasta(file)
+            with open(file,'r') as fh:
+                cds_all += fh.read()
+            shutil.copy(file,cds_path)
 
+    with open(prot_all_file, 'w') as fh:
+        fh.write(prot_all)
+    with open(cds_all_file, 'w') as fh:
+        fh.write(cds_all)
 
-    return (res_path, prot_all_file, cds_all_file, gene_association)
-
-def match_fasta(fasta1: Bio.File._IndexedSeqFileDict, fasta2: Bio.File._IndexedSeqFileDict) -> dict:
-    match = {}
-    for key in fasta1:
-        if key in fasta2:
-            match[key] = (fasta1.get(key), fasta2.get(key))
-    return match
+    return (res_path, prot_all_file, cds_all_file)# , gene_association)
 
 def gffread(path):
     """
@@ -232,7 +237,7 @@ def gffread(path):
 
     return (prot_path, prot_all_file, cds_all_file, gene_association)
 
-def orthoResults(inputPath, numberThreads, extra, verbose):
+def orthoResults(prot_path, arg):
     """
     Runs Orthofinder on the specified directory and returns the path to the results folder.
     
@@ -252,15 +257,15 @@ def orthoResults(inputPath, numberThreads, extra, verbose):
     randomCode = binascii.hexlify(os.urandom(3)).decode('utf8')
 
     # assign it to the folder var, later pass it to the orthofinder command
-    resultsFolder = inputPath + '/' + randomCode
+    resultsFolder = arg.input + '/' + randomCode
 
     # write the linux command to run orthofinder
-    runortho = ORTHOFINDER % (inputPath,str(numberThreads), resultsFolder, extra)
+    runortho = ORTHOFINDER % (prot_path,str(arg.numberThreads), resultsFolder, arg.extra)
 
     # run the command with as a subprocess
     p1 = sp.Popen(runortho,shell=True)
     stdout, stderr = p1.communicate()
-    if verbose:
+    if arg.verbose:
         print(stdout)
         print(stderr)
 
@@ -404,7 +409,7 @@ def read_kaks_file(kaks_filename: str) -> list:
                 list_entry = [line.split('\t')[i] for i in [0, 3]]
     return list_entry
 
-def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
+def parseKaKs(ResultsPath, arg, proteinfilefinal,cdsfilefinal):
     """
     A function to combine the gene pairs from the Orthofinder results and the KaKs distances.
     ## Args:
@@ -418,9 +423,9 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
     """
 
     # Create the 'proc.txt' file to store the number of threads used (required by ParaAT and KaKs Calculator)
-    fileThreads = os.path.join(os.getcwd(), ResultsPath, "proc.txt")
+    fileThreads = os.path.join(arg.input, "proc.txt")
     with open(fileThreads, "w") as fh:
-        fh.write(str(threads) +'\n')
+        fh.write(str(arg.threads) +'\n')
 
     # Create a dictionary to match genes to orthogroups
     data = pd.read_csv(ResultsPath  + "/Orthogroups/Orthogroups.tsv", sep="\t")
@@ -457,7 +462,7 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
                         #   {"gene1-gene2": "OG"}
                         dict_match[gene1 + "-" + gene2] = group_name
 
-    kaksfolder = os.path.join(os.getcwd(), ResultsPath, "KaKsfolder")
+    kaksfolder = os.path.join(arg.input, "KaKsfolder")
 
     # check if there's any .axt filepath from paraAT
 
@@ -493,13 +498,13 @@ def parseKaKs(ResultsPath, threads, proteinfilefinal,cdsfilefinal):
             kaks_filepaths.append(os.path.join(kaksfolder, filename))
 
     if kaks_filepaths:
-        with mp.Pool(threads) as p:
+        with mp.Pool(arg.threads) as p:
             for x in tqdm.tqdm(p.imap_unordered(read_kaks_file, kaks_filepaths), total=len(kaks_filepaths),
                                desc="Reading .kaks files..."):
                 var.append(x)  # appends each entry to `var`
 
     else: # run 'kaksparallel' function on the .axt files in parallel with multiprocessing.Pool()
-        with mp.Pool(threads) as p:
+        with mp.Pool(arg.threads) as p:
             with tqdm.tqdm(total=len(axtFiles), desc="Running KaKs Calculator...") as pbar:
                 for x in p.imap_unordered(kaksparallel, axtFiles):
                     # x is a list that looks like this:
@@ -764,7 +769,6 @@ if __name__ == "__main__":
     arg = arguments()
 
     # Create a folder with date and time of the run to store the output
-    from datetime import datetime
     current_date = datetime.now()
     output_folder = os.path.join(arg.input, 'output', current_date.strftime("HGTResults_%d_%b_%Y__%H_%M"))
     os.makedirs(output_folder)
@@ -772,11 +776,14 @@ if __name__ == "__main__":
     print("[+] Reading the input files...")
 
 
-    prot_path,prot_all_file, cds_all_file,dict_species = gffread(arg.input)
+    if arg.gff:
+        prot_path, prot_all_file, cds_all_file, dict_species = gffread(arg.input)
+    else:
+        prot_path, prot_all_file, cds_all_file, dict_species = prepareInput(arg.input)
 
     if not arg.orthofinderResults:
         print("[+] File load complete; running Orthofinder...")
-        ResultsPath = orthoResults(prot_path, arg.numberThreads,arg.orthofinder,arg.verbose)
+        ResultsPath = orthoResults(prot_path, arg)
     else:
         print(f"[+] Scanning {arg.orthofinderResults} for previous OrthoFinder results")
         ResultsPath = arg.orthofinderResults
