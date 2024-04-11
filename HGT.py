@@ -21,6 +21,8 @@ import numpy as np
 import shutil
 import matplotlib.pyplot as plt
 import ete3
+from typing import Tuple
+
 #import gffutils
 
 # PARAAT = "ParaAT.pl  -h  %s  -a  %s  -n  %s   -p  %s  -o  %s -f axt"
@@ -41,7 +43,7 @@ def arguments():
                         help="In this directory should be present both reference and annotation with the same root", required= True)
     parser.add_argument('-gff', '--gffread', 
                         action='store_true',
-                        help="Use this flag if the input files are a .fasta genome with its .gff annotation. Default is FASTA.")
+                        help="Use this flag if the input files are a .fasta genome with its .gff annotation. Default is .fasta cds.")
     parser.add_argument('-OFr', '--orthofinderResults', 
                         type=str,
                         help="The path to a previous OrthoFinder results folder. If not provided, the tool will run Orthofinder.")
@@ -53,6 +55,8 @@ def arguments():
                         help="The name of the output file. Default is a folder named `output`.")
     parser.add_argument('-v', '--verbose', 
                         action='store_true')
+    parser.add_argument('-e', '--extra',
+                        default='')
 
     args = parser.parse_args()
 
@@ -139,7 +143,7 @@ def gffread(arg):
     extensions = [".fna", ".fasta", ".gff_mod_gff", ".gff3_mod_gff", ".gtf_mod_gff"]
     filename = [file.name for file in input_folder.iterdir() if file.suffix in extensions]
 
-    assert (len(filename) % 2) != 0, "Error: expected 2 files per species. Check your input?"
+    assert (len(filename) % 2) == 0, f"Error: expected 2 files per species, got {len(filename)} Check your input?"
 
     try:
         if not os.path.exists(res_path):
@@ -164,7 +168,7 @@ def gffread(arg):
     # we created a nested list with NOT sorted file that are matched
 
     for check in file_matched:
-        assert len(check) != 2, f"Error: expected 2 files for species {check}, got {len(check)}. Check your input."
+        assert len(check) == 2, f"Error: expected 2 files for species {check}, got {len(check)}. Check your input."
 
     # here the gffread run will create *.faa_mod.fasta and *.fas_mod.fasta files in the prot and cds folders
     run_gffread(arg, file_matched)
@@ -184,11 +188,38 @@ def gffread(arg):
 
     return (prot_path, prot_all_file, cds_all_file, gene_association)
 
+
+def pool_fastamod(pair: Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord]) -> Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord, dict]:
+
+    gene_association = {}
+    aa, cds = pair
+    if aa.id == cds.id:  # TODO this will cause problems. The ID should be the same between aa and cds but its not guaranteed
+        try:
+            tmpaa = aa.description.split("HGT=")[1]
+        except IndexError:
+            print(
+                f"Error: Protein (ID = {aa.id}) has no HGT tag in the description. \nAssigning a random gene tag.")
+            randomCode = binascii.hexlify(os.urandom(3)).decode('utf8')
+            tmpaa = f'gene-{randomCode}'
+
+        else:
+            if ";" in tmpaa:
+                tmpaa = tmpaa.split(";")[0]
+        gene_association[tmpaa] = aa.id
+        aa.id = tmpaa
+        aa.description = ''
+        gene_association[tmpaa] = cds.id
+        cds.id = tmpaa
+        cds.description = ''
+        return aa, cds, gene_association
+
+
 def run_gffread(arg, file_matched): # Runs gffread for each species' gff-fasta pair
 
     res_path = os.path.join(arg.input , "results")
     prot_path = os.path.join(res_path , "prot")
     cds_path =os.path.join(res_path , "cds")
+
 
     for x in file_matched:
 
@@ -220,37 +251,57 @@ def run_gffread(arg, file_matched): # Runs gffread for each species' gff-fasta p
             print(err)
         files = [res_cds_file, res_prot_file] # these are the paths to cds and prot sequences
 
-        # here the program replaces the name of the sequence with the unique gene HGT tag
-
+        # here the program selects and matches each cds with its aa sequence,
+        # also replacing the name of the sequence with a unique gene HGT tag to avoid ambiguity
+        aa_seqlist = []
+        cds_seqlist = []
+        gene_association = {}
+        iterator = []
         for aa in SeqIO.parse(res_prot_file, "fasta"):
             for cds in SeqIO.parse(res_cds_file, "fasta"):
-                if aa.id == cds.id: # TODO this could cause problems. The ID should be the same between aa and cds but its not guaranteed
+                if aa.id == cds.id:
+                    pair = (aa, cds)
+                    iterator.append(pair)
+
+                    break
+
+
+        with mp.Pool(arg.numberThreads) as p:
+            for x in tqdm.tqdm(p.imap_unordered(pool_fastamod, iterator), total=len(iterator),
+                               desc= f"Processing '{res_prot_file}' and '{res_cds_file}' sequences..."):
+                aa, cds, g_ass = x
+                aa_seqlist.append(aa)
+                cds_seqlist.append(cds)
+                gene_association.update(g_ass)
+
+        '''for aa in SeqIO.parse(res_prot_file, "fasta"):
+            for cds in SeqIO.parse(res_cds_file, "fasta"):
+                if aa.id == cds.id: # TODO this will cause problems. The ID should be the same between aa and cds but its not guaranteed
                     try:
                         tmpaa = aa.description.split("HGT=")[1]
                     except IndexError:
                         print(f"Error: Protein (ID = {aa.id}) has no HGT tag in the description. \nAssigning a random gene tag.")
                         randomCode = binascii.hexlify(os.urandom(3)).decode('utf8')
                         tmpaa = f'gene-{randomCode}'
+                        
                     else:
                         if ";" in tmpaa:
                             tmpaa = tmpaa.split(";")[0]
-                        aa.id = tmpaa
+                    gene_association[tmpaa] = aa.id
+                    aa.id = tmpaa
+                    aa.description = ''
+                    gene_association[tmpaa] = cds.id
+                    cds.id = tmpaa
+                    cds.description = ''
+                    
+                    aa_seqlist.append(aa)
+                    cds_seqlist.append(cds)'''
 
-                    try:
-                        tmpcds = cds.description.split("HGT=")[1] # this gene tag should be in the seq description ... but ??
-                    except IndexError:
-                        print(f"Error: CDS (ID = {cds.id}) has no HGT tag in the description. \nAssigning a random gene tag.")
-                        randomCode = binascii.hexlify(os.urandom(3)).decode('utf8')
-                        tmpcds = f'gene-{randomCode}'
-                    else:
-                        if ";" in tmpcds:
-                            tmpcds = tmpcds.split(";")[0]
-                        cds.id = tmpcds
-
-                    # save changes to new, 'modified', .fasta files
-                    with open((res_prot_file + "_mod.fasta"), "w") as Ffileaa, open((res_cds_file + "_mod.fasta"), "w") as Ffilecds:
-                        SeqIO.write(aa, Ffileaa, "fasta")
-                        SeqIO.write(cds, Ffilecds, "fasta")
+        # save changes to new, 'modified', .fasta files
+        with open((res_prot_file + "_mod.fasta"), "w") as Ffileaa, open((res_cds_file + "_mod.fasta"), "w") as Ffilecds:
+            SeqIO.write(aa_seqlist, Ffileaa, "fasta")
+            SeqIO.write(cds_seqlist, Ffilecds, "fasta")
+                        
 
         # Old code handling the gene tag
         # for file in files:
@@ -314,7 +365,7 @@ def orthoResults(prot_path, arg):
     resultsFolder = arg.input + '/' + randomCode
 
     # write the linux command to run orthofinder
-    runortho = ORTHOFINDER % (prot_path,str(arg.numberThreads), resultsFolder, arg.extra)
+    runortho = ORTHOFINDER % (prot_path, str(arg.numberThreads), resultsFolder)#, arg.extra) # TODO fix eventual orthofinder extra arguments
 
     # run the command with as a subprocess
     p1 = sp.Popen(runortho,shell=True)
@@ -553,13 +604,13 @@ def parseKaKs(ResultsPath, arg, proteinfilefinal,cdsfilefinal):
             kaks_filepaths.append(os.path.join(kaksfolder, filename))
 
     if kaks_filepaths:
-        with mp.Pool(arg.threads) as p:
+        with mp.Pool(arg.numberThreads) as p:
             for x in tqdm.tqdm(p.imap_unordered(read_kaks_file, kaks_filepaths), total=len(kaks_filepaths),
                                desc="Reading .kaks files..."):
                 var.append(x)  # appends each entry to `var`
 
     else: # run 'kaksparallel' function on the .axt files in parallel with multiprocessing.Pool()
-        with mp.Pool(arg.threads) as p:
+        with mp.Pool(arg.numberThreads) as p:
             with tqdm.tqdm(total=len(axtFiles), desc="Running KaKs Calculator...") as pbar:
                 for x in p.imap_unordered(kaksparallel, axtFiles):
                     # x is a list that looks like this:
@@ -831,7 +882,7 @@ if __name__ == "__main__":
     print("[+] Reading the input files...")
 
 
-    if arg.gff:
+    if arg.gffread:
         prot_path, prot_all_file, cds_all_file, dict_species = gffread(arg)
     else:
         prot_path, prot_all_file, cds_all_file, dict_species = prepareInput(arg.input)
