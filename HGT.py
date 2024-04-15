@@ -33,7 +33,7 @@ from typing import Tuple
 PARAAT = "ParaAT.pl -h %s -a %s -n %s -p %s -o %s -f axt -v"
 KAKS = "KaKs -i %s -o %s -m %s"
 ORTHOFINDER = "orthofinder -f %s -t %s -o %s %s"
-GFFREAD = "gffread -w %s -y %s -F -g %s %s"
+GFFREAD = "gffread -w %s -y %s -F -S -g %s %s"
 
 def arguments():
     parser = argparse.ArgumentParser(
@@ -56,7 +56,8 @@ def arguments():
     parser.add_argument('-v', '--verbose', 
                         action='store_true')
     parser.add_argument('-e', '--extra',
-                        default='')
+                        default='',
+                        help='Eventual extra flags and attributes to pass to Orthofinder')
 
     args = parser.parse_args()
 
@@ -67,7 +68,14 @@ def read_fasta(file) -> Bio.File._IndexedSeqFileDict: # read a fasta file and re
         fasta = SeqIO.index(fh, "fasta")
     return fasta
 
-def prepareInput(input: str): # TODO work in progress, this function should trigger the .faa-.fna behavior (should be the default instead of gffread IMO)
+def prepare_fasta_input(input: str):
+    """
+
+    :param input:
+        Required:
+    :return:
+    """
+    irregular_proteins = []
 
     res_path = os.path.join(input, "results")
     prot_path = os.path.join(input, 'prot')
@@ -96,20 +104,38 @@ def prepareInput(input: str): # TODO work in progress, this function should trig
 
     # separate the protein and CDS files in the input directory in two distinct folders
     # for this to work, the protein files should have the .faa extension and the CDS files should have the .fna extension
-    count=1
-    for file in os.walk(input):
-        if file.suffix == '.faa':
-            for aa in SeqIO.parse(file, "fasta"):
-                gene_association[aa.id] = f'gene{count}'
-                aa.id = f'gene{count}'
-            with open(file,'r') as fh:
-                prot_all += fh.read()
-            shutil.copy(file, prot_path)
-        if file.suffix == '.fna':
-            cds = SeqIO.index(file, "fasta")
-            with open(file,'r') as fh:
-                cds_all += fh.read()
-            shutil.copy(file,cds_path)
+    ext = ('.fasta','.faa','.fa')
+    fasta_files = [f in os.listdir() if f.endswith(ext)]
+    assert fasta_files, 'Error: No .fasta files found in your input directory. Only .fasta file formats accepted as input.'
+
+    for filename in fasta_files: #select the files, process them one by one
+
+        res_name = filename.split('.')[0]
+        res_cds_file = os.path.join(cds_path, f"{res_name}_cds.fas")
+        res_prot_file = os.path.join(prot_path, f"{res_name}_prot.faa")
+
+        aa_seqlist = []
+        cds_seqlist = []
+
+        for cds_seq in SeqIO.parse(filename, "fasta"):
+            if cds_seq.seq[0:2] != 'ATG':
+                irregular_proteins.append(cds_seq)
+
+            random_name = f"gene_{binascii.hexlify(os.urandom(3)).decode('utf8')}"
+            aa_seq = cds_seq.translate(id=random_name, description='')
+            gene_association[random_name] = cds_seq.id
+            cds_seq.id = random_name
+            cds_seq.description = ''
+            aa_seqlist.append(cds_seq)
+            cds_seqlist.append(aa_seq)
+
+        print(f'Warning: found {len(irregular_proteins)}')
+
+        with open((res_prot_file + "_mod.fasta"), "w") as Ffileaa:
+            SeqIO.write(aa_seqlist, Ffileaa, "fasta")
+        with open((res_cds_file + "_mod.fasta"), "w") as Ffilecds:
+            SeqIO.write(cds_seqlist, Ffilecds, "fasta")
+
 
     with open(prot_all_file, 'w') as fh:
         fh.write(prot_all)
@@ -118,7 +144,7 @@ def prepareInput(input: str): # TODO work in progress, this function should trig
 
     return (res_path, prot_all_file, cds_all_file, gene_association)
 
-def gffread(arg):
+def prepare_gff_input(arg):
     """
     Reads GFF files, modifies them, and performs file operations.
 
@@ -170,8 +196,8 @@ def gffread(arg):
     for check in file_matched:
         assert len(check) == 2, f"Error: expected 2 files for species {check}, got {len(check)}. Check your input."
 
-    # here the gffread run will create *.faa_mod.fasta and *.fas_mod.fasta files in the prot and cds folders
-    run_gffread(arg, file_matched)
+    # here the gffread run will create *.faa_mod.fasta and *.fas_mod.fasta files in the `prot` and `cds` folders
+    irregular_proteins = run_gffread(arg, file_matched)
 
     # Make a collection .fasta of all prot sequences and another .fasta with all cds sequences
     prot_all_file =  res_path + '/proteinfilefinal.faa'
@@ -186,39 +212,46 @@ def gffread(arg):
     #   the gene association dictionary
     #   the protein path
 
-    return (prot_path, prot_all_file, cds_all_file, gene_association)
+    return (prot_path, prot_all_file, cds_all_file, gene_association, irregular_proteins)
 
 
-def pool_fastamod(pair: Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord]) -> Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord, dict]:
+def pool_fastamod(pair: Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord]) -> Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord, dict, list]: # parlallelized function to modify the fasta files. checks
 
+    irregular = False
     gene_association = {}
     aa, cds = pair
-    if aa.id == cds.id:  # TODO this will cause problems. The ID should be the same between aa and cds but its not guaranteed
+
+    if aa.id == cds.id:
+
+        aa.seq = aa.seq
         try:
             tmpaa = aa.description.split("HGT=")[1]
         except IndexError:
             print(
                 f"Error: Protein (ID = {aa.id}) has no HGT tag in the description. \nAssigning a random gene tag.")
             randomCode = binascii.hexlify(os.urandom(3)).decode('utf8')
-            tmpaa = f'gene-{randomCode}'
+            tmpaa = f'gene_{randomCode}'
 
         else:
             if ";" in tmpaa:
                 tmpaa = tmpaa.split(";")[0]
-        gene_association[tmpaa] = aa.id
+        gene_association[tmpaa] = (aa.id, cds.id)
         aa.id = tmpaa
         aa.description = ''
-        gene_association[tmpaa] = cds.id
         cds.id = tmpaa
         cds.description = ''
-        return aa, cds, gene_association
 
+        if not aa.seq.startswith('M'):
+            irregular = True # a flag to collect all irregular proteins
+        return aa, cds, gene_association, irregular
 
 def run_gffread(arg, file_matched): # Runs gffread for each species' gff-fasta pair
 
     res_path = os.path.join(arg.input , "results")
     prot_path = os.path.join(res_path , "prot")
     cds_path =os.path.join(res_path , "cds")
+    irregular_proteins = []
+    gene_association = {}
 
 
     for x in file_matched:
@@ -255,8 +288,8 @@ def run_gffread(arg, file_matched): # Runs gffread for each species' gff-fasta p
         # also replacing the name of the sequence with a unique gene HGT tag to avoid ambiguity
         aa_seqlist = []
         cds_seqlist = []
-        gene_association = {}
         iterator = []
+
         for aa in SeqIO.parse(res_prot_file, "fasta"):
             for cds in SeqIO.parse(res_cds_file, "fasta"):
                 if aa.id == cds.id:
@@ -269,10 +302,12 @@ def run_gffread(arg, file_matched): # Runs gffread for each species' gff-fasta p
         with mp.Pool(arg.numberThreads) as p:
             for x in tqdm.tqdm(p.imap_unordered(pool_fastamod, iterator), total=len(iterator),
                                desc= f"Processing '{res_prot_file}' and '{res_cds_file}' sequences..."):
-                aa, cds, g_ass = x
+                aa, cds, g_ass, irregular = x
                 aa_seqlist.append(aa)
                 cds_seqlist.append(cds)
                 gene_association.update(g_ass)
+                if irregular:
+                    irregular_proteins.append(aa)
 
         '''for aa in SeqIO.parse(res_prot_file, "fasta"):
             for cds in SeqIO.parse(res_cds_file, "fasta"):
@@ -301,21 +336,10 @@ def run_gffread(arg, file_matched): # Runs gffread for each species' gff-fasta p
         with open((res_prot_file + "_mod.fasta"), "w") as Ffileaa, open((res_cds_file + "_mod.fasta"), "w") as Ffilecds:
             SeqIO.write(aa_seqlist, Ffileaa, "fasta")
             SeqIO.write(cds_seqlist, Ffilecds, "fasta")
-                        
-
-        # Old code handling the gene tag
-        # for file in files:
-        #     with open((file + "_mod.fasta"), "w") as Ffile:
-        #         for record in SeqIO.parse(file, "fasta"):
-        #             tmp = record.description.split("HGT=")[1] # this gene tag should be in the seq description ... but ??
-        #             if ";" in tmp:
-        #                 tmp = tmp.split(";")[0]
-        #             record.id = tmp
-        #             record.description = ""
-        #             SeqIO.write(record, Ffile, "fasta")
 
         os.remove(res_cds_file)
         os.remove(res_prot_file)
+        return gene_association, irregular_proteins
 
 def parse_gff(folder):
 
@@ -362,20 +386,21 @@ def orthoResults(prot_path, arg):
     randomCode = binascii.hexlify(os.urandom(3)).decode('utf8')
 
     # assign it to the folder var, later pass it to the orthofinder command
-    resultsFolder = arg.input + '/' + randomCode
+    resultsFolder = os.path.join(arg.input, 'results', 'orthofinder_results')
 
     # write the linux command to run orthofinder
-    runortho = ORTHOFINDER % (prot_path, str(arg.numberThreads), resultsFolder)#, arg.extra) # TODO fix eventual orthofinder extra arguments
+    runortho = ORTHOFINDER % (prot_path, str(arg.numberThreads), resultsFolder, arg.extra) # TODO fix eventual orthofinder extra arguments
 
     # run the command with as a subprocess
-    p1 = sp.Popen(runortho,shell=True)
-    stdout, stderr = p1.communicate()
-    if arg.verbose:
-        print(stdout)
-        print(stderr)
+    try:
+        p1 = sp.Popen(runortho,shell=True)
+        stdout, stderr = p1.communicate()
+        if arg.verbose:
+            print(stdout)
+            print(stderr)
 
-    if p1.returncode != 0:
-        print(f"OrthoFinder failed: error code {p1.returncode}")
+    except p1.returncode != 0:
+            print(f"OrthoFinder failed: error code {p1.returncode}")
 
     # retrieve the most recent folder created in the result directory, which will contain the OrthoFinder results, and return its path
     arr = os.listdir(resultsFolder)
@@ -882,10 +907,11 @@ if __name__ == "__main__":
     print("[+] Reading the input files...")
 
 
+
     if arg.gffread:
-        prot_path, prot_all_file, cds_all_file, dict_species = gffread(arg)
+        prot_path, prot_all_file, cds_all_file, dict_species, irregular_proteins = prepare_gff_input(arg)
     else:
-        prot_path, prot_all_file, cds_all_file, dict_species = prepareInput(arg.input)
+        prot_path, prot_all_file, cds_all_file, dict_species, irregular_proteins = prepare_fasta_input(arg.input)
 
     if not arg.orthofinderResults:
         print("[+] File load complete; running Orthofinder...")
@@ -927,13 +953,17 @@ if __name__ == "__main__":
     # Create a Venn diagram of the criteria
     vennpath = os.path.join(output_folder, "vennplot.png")
     fig = vennPlot(list_kaks,
-             list_tree, 
+             list_tree,
              list_topology)
     plt.savefig(vennpath)
 
     # Find the intersection of the three criteria
     intersection = list(set([i for i in list_kaks if i in list_tree and i in list_topology]))
     print(f'[+] Found {len(intersection)} genes that satisfy all three criteria.')
+    irregular_candidates = set([i for i in intersection if i in irregular_proteins])
+    if irregular_candidates:
+        print(f"Warning: {len(irregular_candidates)} of them are also irregular sequences.")
+
 
     # TODO da cambiare
     if False: # Print the HGT-candidate trees
@@ -960,7 +990,7 @@ if __name__ == "__main__":
     # Reorder the dataframe and add the topology score
     full_matrix = full_matrix[['gene_1', 'gene_2', 'OG', 'species', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']]
     full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(int) # add the topology score if the OG appears in `list_topology`
-
+    full_matrix['irregular_sequence'] = full_matrix[["gene_1", "gene_2"]].isin(irregular_proteins).astype(int)
     # compute the final HGT score and sort the dataframe
     full_matrix['HGT'] = full_matrix['HGT_kaks'] + full_matrix['HGT_tree'] + full_matrix['HGT_topology']
     full_matrix.sort_values(by=['HGT'], inplace=True, ascending=False)
@@ -992,6 +1022,8 @@ if __name__ == "__main__":
 
     with open(os.path.join(output_folder, 'HGT_candidates.tsv'), 'x') as f:
         full_matrix.to_csv(f, sep='\t', index=False)
+    with open(os.path.join(output_folder, 'Irregular_candidates.tsv'), 'x') as f:
+        SeqIO.write(irregular_candidates, f, 'fasta')
     with open(os.path.join(output_folder, 'plot_data.tsv'), 'x') as f:
         plot_matrix.to_csv(f, sep='\t',index=False)
     # with open(os.path.join(output_folder, "HGT_violins.png"), 'x') as f:
