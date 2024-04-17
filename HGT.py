@@ -16,12 +16,14 @@ import multiprocessing as mp
 import tqdm
 import pandas as pd
 import subprocess
+
+from Bio.SeqRecord import SeqRecord
 from matplotlib_venn import venn3
 import numpy as np
 import shutil
 import matplotlib.pyplot as plt
 import ete3
-from typing import Tuple
+from typing import Tuple, Dict
 
 #import gffutils
 
@@ -33,27 +35,29 @@ from typing import Tuple
 PARAAT = "ParaAT.pl -h %s -a %s -n %s -p %s -o %s -f axt -v"
 KAKS = "KaKs -i %s -o %s -m %s"
 ORTHOFINDER = "orthofinder -f %s -t %s -o %s %s"
-GFFREAD = "gffread -w %s -y %s -F -S -C -g %s %s"
+GFFREAD = "gffread -w %s -y %s -F -C -g %s %s"
+
 
 def arguments():
     parser = argparse.ArgumentParser(
-        prog='HGT', 
-        description='This tool identifies potential horizontal gene transfer events between species. The input needs to be a directory containing the reference and annotation files for the species of interest. The tool will run OrthoFinder and KaKs Calculator to identify potential HGT events.',)
-    parser.add_argument('-i','--input',
-                        help="In this directory should be present both reference and annotation with the same root", required= True)
-    parser.add_argument('-gff', '--gffread', 
+        prog='HGT',
+        description='This tool identifies potential horizontal gene transfer events between species. The input needs to be a directory containing the reference and annotation files for the species of interest. The tool will run OrthoFinder and KaKs Calculator to identify potential HGT events.', )
+    parser.add_argument('-i', '--input',
+                        help="In this directory should be present both reference and annotation with the same root",
+                        required=True)
+    parser.add_argument('-gff', '--gffread',
                         action='store_true',
                         help="Use this flag if the input files are a .fasta genome with its .gff annotation. Default is .fasta cds.")
-    parser.add_argument('-OFr', '--orthofinderResults', 
+    parser.add_argument('-OFr', '--orthofinderResults',
                         type=str,
                         help="The path to a previous OrthoFinder results folder. If not provided, the tool will run Orthofinder.")
     parser.add_argument('-nt', '--numberThreads',
-                        type=int, 
+                        type=int,
                         help='Number of parallel threads to use')
-    parser.add_argument('-o', '--output', 
-                        default = "output",
+    parser.add_argument('-o', '--output',
+                        default="output",
                         help="The name of the output file. Default is a folder named `output`.")
-    parser.add_argument('-v', '--verbose', 
+    parser.add_argument('-v', '--verbose',
                         action='store_true')
     parser.add_argument('-e', '--extra',
                         default='',
@@ -61,13 +65,14 @@ def arguments():
 
     args = parser.parse_args()
 
-    return(args)
+    return (args)
+
 
 def prepare_fasta_input(arg):
     """
 
     :param input:
-        Required:
+        arg: program parameters
     :return:
     """
     irregular_proteins = []
@@ -89,8 +94,8 @@ def prepare_fasta_input(arg):
         print(f"Error creating directory '{res_path}': {e}")
         raise SystemExit
 
-    prot_all_file =  res_path + '/proteinfilefinal.faa'
-    cds_all_file =  res_path + '/cdsfilefinal.fas'
+    prot_all_file = res_path + '/proteinfilefinal.faa'
+    cds_all_file = res_path + '/cdsfilefinal.fas'
 
     prot_all = ''
     cds_all = ''
@@ -99,11 +104,11 @@ def prepare_fasta_input(arg):
 
     # separate the protein and CDS files in the input directory in two distinct folders
     # for this to work, the protein files should have the .faa extension and the CDS files should have the .fna extension
-    extensions = ('.fasta','.faa','.fa')
+    extensions = ('.fasta', '.faa', '.fa')
     fasta_files = [f for f in os.listdir(arg.input) if f.endswith(extensions)]
     assert fasta_files, 'Error: No .fasta files found in your input directory. Only .fasta file formats accepted as input.'
 
-    for filename in fasta_files: #select the files, process them one by one
+    for filename in fasta_files:  #select the files, process them one by one
 
         species_association = {}
 
@@ -120,16 +125,18 @@ def prepare_fasta_input(arg):
                 if arg.verbose:
                     print(f"Irregular sequence, doesn't start with canonical 'ATG' start codon: {cds_seq.id}")
 
-            random_name = f"gene_{binascii.hexlify(os.urandom(3)).decode('utf8')}" # Assign a unique gene tag to the entry, to avoid ambiguity
-            aa_seq = cds_seq.translate(id=random_name, description='') # Translate the CDS into a protein sequence
-            species_association['id'] = cds_seq.id # Save the gene tag and the original gene name in a dictionary
+            random_code = binascii.hexlify(os.urandom(10)).decode(
+                'utf8')  # Assign a unique gene tag to the entry, to avoid ambiguity
+            random_name = f"gene_{random_code}"
+            aa_seq = cds_seq.translate(id=random_name, description='')  # Translate the CDS into a protein sequence
+            species_association['id'] = cds_seq.id  # Save the gene tag and the original gene name in a dictionary
             species_association['species'] = filename.split('.')[0]
             cds_seq.id = random_name
             cds_seq.description = ''
             aa_seqlist.append(cds_seq)
             cds_seqlist.append(aa_seq)
 
-            gene_association[random_name] = species_association # TODO check if this is correct...
+            gene_association[random_code] = species_association  # TODO check if this is correct...
 
         print(f'Warning: found {len(irregular_proteins)}')
 
@@ -145,7 +152,7 @@ def prepare_fasta_input(arg):
     with open(cds_all_file, 'w') as fh:
         fh.write(cds_all)
 
-    return (res_path, prot_all_file, cds_all_file, gene_association)
+    return (res_path, prot_all_file, cds_all_file, gene_association, irregular_proteins)
 
 def prepare_gff_input(arg):
     """
@@ -160,9 +167,9 @@ def prepare_gff_input(arg):
         tuple: A tuple containing the paths to the protein files, the directory of two .fasta files (AA and DNA)
         and a gene association dictionary (matching a gene code to its original ID in the genome).
     """
-    res_path = os.path.join(arg.input , "results")
-    prot_path = os.path.join(res_path , "prot")
-    cds_path =os.path.join(res_path , "cds")
+    res_path = os.path.join(arg.input, "results")
+    prot_path = os.path.join(res_path, "prot")
+    cds_path = os.path.join(res_path, "cds")
     input_folder = Path(arg.input)
 
     # parse the gff files. this function also adds the TAG ... and modifies the gff into .gff_mod_gff
@@ -182,7 +189,7 @@ def prepare_gff_input(arg):
         if not os.path.exists(cds_path):
             Path(cds_path).mkdir()
     except FileExistsError:
-        print("Warning: res folder already exist. Overwriting...")    
+        print("Warning: res folder already exist. Overwriting...")
     except Exception as e:
         print(f"Error creating directory '{res_path}': {e}")
         raise SystemExit
@@ -204,21 +211,23 @@ def prepare_gff_input(arg):
     gene_association, irregular_proteins = run_gffread(arg, file_matched)
 
     # Make a collection .fasta of all prot sequences and another .fasta with all cds sequences
-    prot_all_file =  res_path + '/proteinfilefinal.faa'
-    cds_all_file =  res_path + '/cdsfilefinal.fas' 
-    cmd = 'cat ' + prot_path + '/*.faa_mod.fasta' + ' > ' + prot_all_file   # this .fasta file is a collection of all the aminoacid sequences
+    prot_all_file = res_path + '/proteinfilefinal.faa'
+    cds_all_file = res_path + '/cdsfilefinal.fas'
+    cmd = 'cat ' + prot_path + '/*.faa_mod.fasta' + ' > ' + prot_all_file  # this .fasta file is a collection of all the aminoacid sequences
     subprocess.run(cmd, shell=True)
-    cmd = 'cat ' + cds_path + '/*.fas_mod.fasta' + ' > ' + cds_all_file # this .fasta file is a collection of all the coding DNA sequences
+    cmd = 'cat ' + cds_path + '/*.fas_mod.fasta' + ' > ' + cds_all_file  # this .fasta file is a collection of all the coding DNA sequences
     subprocess.run(cmd, shell=True)
 
     # the output of the function is:
     #   the path to the two .fasta files (AA and DNA)
     #   the gene association dictionary
     #   the protein path
+    # print(gene_association)
+    return prot_path, prot_all_file, cds_all_file, gene_association, irregular_proteins
 
-    return (prot_path, prot_all_file, cds_all_file, gene_association, irregular_proteins)
 
-def pool_fastamod(pair: Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord]) -> Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord, dict, list]: # parlallelized function to modify the fasta files. checks
+def pool_fastamod(pair: Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord]) -> Tuple[
+    SeqRecord, SeqRecord, Dict, bool, str]:  # parlallelized function to modify the fasta files. checks
 
     irregular = False
     gene_association = {}
@@ -227,12 +236,14 @@ def pool_fastamod(pair: Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord]) -> Tupl
     try:
         random_name = aa.description.split("HGT=")[1]
     except IndexError:
-        print(
-            f"Error: Protein (ID = {aa.id}) has no HGT tag in the description. \nAssigning a random gene tag.")
-        random_name = f'gene_{binascii.hexlify(os.urandom(3)).decode('utf8')}'
+        #print(
+        #    f"Error: Protein (ID = {aa.id}) has no HGT tag in the description. \nAssigning a random gene tag.")
+        random_code = binascii.hexlify(os.urandom(10)).decode("utf8")
+        random_name = f"gene_{random_code}"
     else:
         if ";" in random_name:
             random_name = random_name.split(";")[0]
+        random_code = random_name.split("_")[-1]
 
     gene_association['id'] = aa.id
 
@@ -242,8 +253,9 @@ def pool_fastamod(pair: Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord]) -> Tupl
     cds.description = ''
 
     if not aa.seq.startswith('M'):
-        irregular = True # a flag to collect all irregular proteins
-    return aa, cds, gene_association, irregular, random_name
+        irregular = True  # a flag to collect all irregular proteins
+    return aa, cds, gene_association, irregular, random_code
+
 
 def run_gffread(arg, file_matched):
     """
@@ -260,9 +272,9 @@ def run_gffread(arg, file_matched):
         FileNotFoundError: If the input files are not found.
 
     """
-    res_path = os.path.join(arg.input , "results")
-    prot_path = os.path.join(res_path , "prot")
-    cds_path =os.path.join(res_path , "cds")
+    res_path = os.path.join(arg.input, "results")
+    prot_path = os.path.join(res_path, "prot")
+    cds_path = os.path.join(res_path, "cds")
     irregular_proteins = []
     gene_association = {}
 
@@ -281,9 +293,9 @@ def run_gffread(arg, file_matched):
         cmd = GFFREAD % (res_cds_file, res_prot_file, fasta_genome_file, gff_file)
         # GFFREAD will output the fasta with CDS and protein sequences
 
-        result_cds = subprocess.Popen(cmd, 
-                                      shell=True, 
-                                      stdout=subprocess.PIPE, 
+        result_cds = subprocess.Popen(cmd,
+                                      shell=True,
+                                      stdout=subprocess.PIPE,
                                       stderr=subprocess.PIPE
                                       )
         out, err = result_cds.communicate()
@@ -294,11 +306,12 @@ def run_gffread(arg, file_matched):
         aa_seqlist = []
         cds_seqlist = []
 
-        iterator = extract_pairs_from_files(res_cds_file, res_prot_file) # contains all tuples (pairs of matched sequences)
+        iterator = extract_pairs_from_files(res_cds_file,
+                                            res_prot_file)  # contains all tuples (pairs of matched sequences)
 
         with mp.Pool(arg.numberThreads) as p:
             for x in tqdm.tqdm(p.imap_unordered(pool_fastamod, iterator), total=len(iterator),
-                               desc= f"Processing '{res_prot_file}' and '{res_cds_file}' sequences..."):
+                               desc=f"Processing '{res_prot_file}' and '{res_cds_file}' sequences..."):
                 aa, cds, g_ass, irregular, random_name = x
                 aa_seqlist.append(aa)
                 cds_seqlist.append(cds)
@@ -316,8 +329,8 @@ def run_gffread(arg, file_matched):
 
     return gene_association, irregular_proteins
 
-def extract_pairs_from_files(res_cds_file, res_prot_file):
 
+def extract_pairs_from_files(res_cds_file, res_prot_file):
     iterator = []
 
     for aa in SeqIO.parse(res_prot_file, "fasta"):
@@ -328,14 +341,14 @@ def extract_pairs_from_files(res_cds_file, res_prot_file):
                 break
     return iterator
 
-def parse_gff(folder):
 
-    gene_association = {}   # gene_association is a dict used to save the mapping between the tag and the actual gene name
+def parse_gff(folder):
+    gene_association = {}  # gene_association is a dict used to save the mapping between the tag and the actual gene name
 
     gff = [".gff", ".gff3", ".gtf"]
     filename_gff = [os.path.join(folder, file.name) for file in folder.iterdir() if file.suffix in gff]
     count = 0
-    
+
     for file in filename_gff:
         with open(file + "_mod_gff", "w") as fho:
             with open(file, "r") as fh:
@@ -345,13 +358,14 @@ def parse_gff(folder):
                     elif len(line.split("\t")) == 9 and line.split("\t")[2].startswith(("mRNA", "CDS")):
                         count += 1
                         genes_collection = [file.rsplit(".", 1)[0].rsplit("/", 1)[1], line.replace("\t", " ").rstrip()]
-                        line = line.rstrip() + ";HGT=gene" + str(count) #TODO to add an index for each genome file # ?
+                        line = line.rstrip() + ";HGT=gene_" + str(count)  #TODO to add an index for each genome file # ?
                         fho.write(line + "\n")
-                        gene_association["gene" + str(count)] = genes_collection
+                        gene_association["gene_" + str(count)] = genes_collection
                     else:
                         fho.write(line)
 
     return gene_association
+
 
 def orthoResults(prot_path, arg):
     """
@@ -371,30 +385,31 @@ def orthoResults(prot_path, arg):
 
     # assign a path to store orthofinder results, later pass it to the orthofinder command
     orthofinder_output_folder = os.path.join(arg.input, 'results', 'OrthoFinder_results')
-    os.makedirs(orthofinder_output_folder)
+    # os.makedirs(orthofinder_output_folder)
 
     # write the linux command to run orthofinder
-    runortho = ORTHOFINDER % (prot_path, 
-                              str(arg.numberThreads), 
-                              orthofinder_output_folder, 
-                              arg.extra) # TODO fix eventual orthofinder extra arguments
+    runortho = ORTHOFINDER % (prot_path,
+                              str(arg.numberThreads),
+                              orthofinder_output_folder,
+                              arg.extra)  # TODO fix eventual orthofinder extra arguments
 
     # run the command with as a subprocess
     try:
-        p1 = sp.Popen(runortho,shell=True)
+        p1 = sp.Popen(runortho, shell=True)
         stdout, stderr = p1.communicate()
         if arg.verbose:
             print(stdout)
             print(stderr)
 
     except p1.returncode != 0:
-            print(f"OrthoFinder failed: error code {p1.returncode}")
+        print(f"OrthoFinder failed: error code {p1.returncode}")
 
     # retrieve the most recent folder created in the result directory, which will contain the OrthoFinder results, and return its path
     arr = os.listdir(orthofinder_output_folder)
     orthofinder_output_folder = os.path.join(orthofinder_output_folder, arr[0])
 
     return orthofinder_output_folder
+
 
 def getSpNames(ResultsPath):
     """
@@ -405,13 +420,13 @@ def getSpNames(ResultsPath):
         list: A list of strings containing the names of the species.
     """
     with open(ResultsPath + "/Species_Tree/SpeciesTree_rooted.txt", "r") as f:
-
         speciesTree = f.read()
         speciesTree = Phylo.read(StringIO(speciesTree), "newick")
         speciesNames = [clade.name for clade in speciesTree.get_terminals()]
 
         # speciesNames è una lista di stringhe con i nomi delle specie
         return speciesNames
+
 
 def read_tree(info):
     """
@@ -426,7 +441,7 @@ def read_tree(info):
     """
 
     genetree, species_list = info
-    distances=[]
+    distances = []
     genTree = Phylo.read(genetree, "newick")
     clades = list(genTree.get_terminals())
     combs = list(it.combinations(clades, 2))
@@ -442,6 +457,7 @@ def read_tree(info):
         dist = genTree.distance(name1, name2)
 
         type = "tree"
+
         name1 = name1.split("_")[-1]
         name2 = name2.split("_")[-1]
 
@@ -454,8 +470,8 @@ def read_tree(info):
 
     return distances
 
-def parseOrthofinder(ResultsPath: str, threads: int) -> list:
 
+def parseOrthofinder(ResultsPath: str, threads: int) -> list:
     """
     A function to parse the Orthofinder results and return a list of entries containing the gene pairs and their distances.
     
@@ -467,7 +483,7 @@ def parseOrthofinder(ResultsPath: str, threads: int) -> list:
         each list is to be considered as a data entry and will contain these columns:
             `gene1` | `gene2` | `dist` inferred by OrthoFinder | `OG` | `type` = "tree" 
     """
-    
+
     # retrieve the species names from the species tree file
     species_list = getSpNames(ResultsPath)
 
@@ -476,17 +492,19 @@ def parseOrthofinder(ResultsPath: str, threads: int) -> list:
     for (dir_path, dir_names, file_names) in os.walk(GeneTreesPath):
         files = file_names
     tree_abs_path = [(os.path.join(GeneTreesPath, file), species_list) for file in files]
-    
+
     distances = []
     # read the gene trees in parallel with multiprocessing.Pool()
     with mp.Pool(threads) as p:
-        for x in tqdm.tqdm(p.imap_unordered(read_tree, tree_abs_path), total=len(tree_abs_path), desc="Reading GeneTrees..."):
-            distances.append(x) # appends each entry to `distances`
+        for x in tqdm.tqdm(p.imap_unordered(read_tree, tree_abs_path), total=len(tree_abs_path),
+                           desc="Reading GeneTrees..."):
+            distances.append(x)  # appends each entry to `distances`
             pass
-    
-    distances = [item for sublist in distances for item in sublist] # turn it into a flat list
-    
+
+    distances = [item for sublist in distances for item in sublist]  # turn it into a flat list
+
     return distances
+
 
 def kaksparallel(file: str) -> list:
     """
@@ -505,10 +523,10 @@ def kaksparallel(file: str) -> list:
     # run the 'KAKS' command in the shell
     output = file + ".kaks"
     if not os.path.exists(output) or not os.path.getsize(output) > 0:
-        runkaks = KAKS % (file, #the .axt file passed as input
-                          output,   # the output file
-                          "NG") # NG is the model used for the calculation
-        run = subprocess.Popen(runkaks, shell=True,stderr=subprocess.PIPE ,stdout=subprocess.PIPE)
+        runkaks = KAKS % (file,  #the .axt file passed as input
+                          output,  # the output file
+                          "NG")  # NG is the model used for the calculation
+        run = subprocess.Popen(runkaks, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         out, err = run.communicate()
         # print(out)
         print(err)
@@ -517,6 +535,7 @@ def kaksparallel(file: str) -> list:
     list_entry = read_kaks_file(output)
 
     return list_entry
+
 
 def read_kaks_file(kaks_filename: str) -> list:
     with open(kaks_filename, newline='') as resultskaks:
@@ -528,12 +547,13 @@ def read_kaks_file(kaks_filename: str) -> list:
                 list_entry = [line.split('\t')[i] for i in [0, 3]]
     return list_entry
 
-def parseKaKs(ResultsPath, arg, proteinfilefinal,cdsfilefinal):
+
+def parseKaKs(arg, ResultsPath, proteinfilefinal, cdsfilefinal):
     """
     A function to combine the gene pairs from the Orthofinder results and the KaKs distances.
     ## Args:
+        arg: Program parameters. Duh?
         ResultsPath (str): The path to the Orthofinder results folder.
-        threads (int): The number of threads to use for the parsing.
         proteinfilefinal (str): The path to the protein file.
         cdsfilefinal (str): The path to the CDS file.
     ## Returns:
@@ -542,18 +562,18 @@ def parseKaKs(ResultsPath, arg, proteinfilefinal,cdsfilefinal):
     """
 
     # Create the 'proc.txt' file to store the number of threads used (required by ParaAT and KaKs Calculator)
-    fileThreads = os.path.join(arg.input, 'results', "proc.txt")
-    fileThreads = os.path.join(os.getcwd(), ResultsPath, "proc.txt")
-    with open(fileThreads, "w") as fh:
-        fh.write(str(arg.threads) +'\n')
+    # file_threads = os.path.join(arg.input, "proc.txt")
+    file_threads = os.path.join(os.getcwd(), ResultsPath, "proc.txt")
+    with open(file_threads, "w") as fh:
+        fh.write(str(arg.numberThreads) + '\n')
 
     # Create a dictionary to match genes to orthogroups
-    data = pd.read_csv(ResultsPath  + "/Orthogroups/Orthogroups.tsv", sep="\t")
+    data = pd.read_csv(ResultsPath + "/Orthogroups/Orthogroups.tsv", sep="\t")
     data_dict = {}
-    data.fillna('empty', inplace = True)
+    data.fillna('empty', inplace=True)
 
-    for row in data.itertuples(index = False):
-        values=[]
+    for row in data.itertuples(index=False):
+        values = []
         for i in range(1, len(data.columns)):
             key = row[0]
             values.append(row[i].split(', '))
@@ -582,14 +602,13 @@ def parseKaKs(ResultsPath, arg, proteinfilefinal,cdsfilefinal):
                         #   {"gene1-gene2": "OG"}
                         dict_match[gene1 + "-" + gene2] = group_name
 
-    kaksfolder = os.path.join(arg.input, 'results', "KaKs_results")
+    kaksfolder = os.path.join(os.getcwd(), 'results', "KaKs_results")
 
     # check if there's any .axt filepath from paraAT
 
-    axtFiles = [] # `axtFiles will collect existing .axt alignment files
-    var = [] # `var` will collect the seq pairs and their Ks value
-    kaks_filepaths = [] # `kaks_filepaths` will collect existing .kaks files, from previous KaKs calculator runs
-
+    axtFiles = []  # `axtFiles will collect existing .axt alignment files
+    var = []  # `var` will collect the seq pairs and their Ks value
+    kaks_filepaths = []  # `kaks_filepaths` will collect existing .kaks files, from previous KaKs calculator runs
 
     '''if os.path.exists(kaksfolder) and os.path.getsize(kaksfolder) > 0:
         for filename in os.listdir(kaksfolder):
@@ -598,14 +617,19 @@ def parseKaKs(ResultsPath, arg, proteinfilefinal,cdsfilefinal):
 
     # else: # run ParaAT in the shell.
     # This will create .axt files from the protein and CDS files
-    runparaAT = PARAAT % (file_out,
-                          proteinfilefinal,
-                          cdsfilefinal,
-                          fileThreads,
-                          kaksfolder)
-    print(f"Running {runparaAT}...")
-    run = subprocess.Popen(runparaAT, shell=True, cwd=ResultsPath,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out,err = run.communicate()
+    proteinfilefinal = os.path.join(os.getcwd(), proteinfilefinal)
+    cdsfilefinal = os.path.join(os.getcwd(), cdsfilefinal)
+
+    runparaAT = PARAAT % (file_out, proteinfilefinal, cdsfilefinal, file_threads, kaksfolder)
+    # print(f"Running {runparaAT}...")
+    print(file_out)
+    print(proteinfilefinal)
+    print(cdsfilefinal)
+    print(file_threads)
+    print(kaksfolder)
+
+    run = subprocess.Popen(runparaAT, shell=True, cwd=ResultsPath, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = run.communicate()
     if arg.verbose:
         print(out)
         print(err)
@@ -623,7 +647,7 @@ def parseKaKs(ResultsPath, arg, proteinfilefinal,cdsfilefinal):
                                desc="Reading .kaks files..."):
                 var.append(x)  # appends each entry to `var`
 
-    else: # run 'kaksparallel' function on the .axt files in parallel with multiprocessing.Pool()
+    else:  # run 'kaksparallel' function on the .axt files in parallel with multiprocessing.Pool()
         with mp.Pool(arg.numberThreads) as p:
             with tqdm.tqdm(total=len(axtFiles), desc="Running KaKs Calculator...") as pbar:
                 for x in p.imap_unordered(kaksparallel, axtFiles):
@@ -649,11 +673,10 @@ def parseKaKs(ResultsPath, arg, proteinfilefinal,cdsfilefinal):
             OG = dict_match[entry[0]]  # retrieve orthogroup by matching with the seq_pair name
         except KeyError:
             continue
-        name1, name2 = entry[0].rsplit("-") # retrieve the original gene names
+        name1, name2 = entry[0].rsplit("-")  # retrieve the original gene names
 
         if name1 < name2:
             name1, name2 = name2, name1
-
 
         dist = entry[1]
         try:
@@ -664,6 +687,7 @@ def parseKaKs(ResultsPath, arg, proteinfilefinal,cdsfilefinal):
         distances.append(row)
 
     return distances
+
 
 def append_species(entry_list, dict_species):
     """
@@ -686,8 +710,6 @@ def append_species(entry_list, dict_species):
     final = []
     for line in entry_list:
 
-
-
         if dict_species[line[0]]:
             species1 = dict_species[line[0]]['species']
         if dict_species[line[1]]:
@@ -701,21 +723,21 @@ def append_species(entry_list, dict_species):
         line.append(row)
         final.append(line)
 
-
     matrix = pd.DataFrame(final,
-         columns = ["gene_1", "gene_2", "OG", "dist",  "type", "species"])
+                          columns=["gene_1", "gene_2", "OG", "dist", "type", "species"])
 
     return matrix
 
-def getMeanDist(comp):
 
-    print(f"analyzing {comp.iloc[0,4]}...")
+def getMeanDist(comp):
+    print(f"analyzing {comp.iloc[0, 4]}...")
 
     mean = comp['dist'].mean()
     comp["mean_dist"] = mean - comp["dist"]
     comp.sort_values(by=["mean_dist"], inplace=True, ascending=False)
 
     return comp[comp.mean_dist > 0]
+
 
 def getHGT(matrix, dict_species):
     """
@@ -737,13 +759,14 @@ def getHGT(matrix, dict_species):
     # format the pd.DataFrame from list
     matrix2 = matrix2[matrix2['dist'] != "NA"]  # remove NAs
     matrix2['dist'] = pd.to_numeric(matrix2['dist'], downcast='float')
-    matrix2['HGT'] = None   # initialize an empty column for the HGT score
-    sp_pairs = matrix2['species'].unique()    
+    matrix2['HGT'] = None  # initialize an empty column for the HGT score
+    sp_pairs = matrix2['species'].unique()
 
     for sp in sp_pairs:
-        threshold = matrix2[matrix2['species'] == sp]['dist'].quantile(.05) # get the 5th percentile of the distance.
-        matrix2.loc[matrix2['species'] == sp, 'HGT'] = matrix2['dist'] < threshold # set the 'HGT' variable to True if the distance is less than the threshold
-    
+        threshold = matrix2[matrix2['species'] == sp]['dist'].quantile(.05)  # get the 5th percentile of the distance.
+        matrix2.loc[matrix2['species'] == sp, 'HGT'] = matrix2[
+                                                           'dist'] < threshold  # set the 'HGT' variable to True if the distance is less than the threshold
+
     return matrix2
 
     """ 
@@ -793,6 +816,7 @@ def getHGT(matrix, dict_species):
     dist_tree_sorted = dist_tree.sort_values(by='dist') 
     """
 
+
 def get_topology(ResultsPath):
     """
     Parameters
@@ -817,7 +841,7 @@ def get_topology(ResultsPath):
             node.name = node.name.replace(".", "_")
     print(species_tree_ete)
 
-    dict_topology = {} # a dictionary with OG as key and their 'HGT score' (1 or 0) as value
+    dict_topology = {}  # a dictionary with OG as key and their 'HGT score' (1 or 0) as value
     list_keep = []
 
     for root, dir, files in os.walk(single_tree_folder):
@@ -825,14 +849,15 @@ def get_topology(ResultsPath):
             og = file.split("_")[0]
             dict_topology[og] = 0
             file_og = os.path.join(single_tree_folder, file)
-            with open(file_og, "r") as fh :
+            with open(file_og, "r") as fh:
                 og_single = fh.read()
                 og_tree = ete3.Tree(og_single)
                 for node in og_tree.traverse():
                     if node.is_leaf():
                         node.name = node.name.split("_gene")[0]
                 try:
-                    diff = og_tree.compare(species_tree_ete)    # use the 'compare()' function from ete3 to compute the Robinson-Foulds distance
+                    diff = og_tree.compare(
+                        species_tree_ete)  # use the 'compare()' function from ete3 to compute the Robinson-Foulds distance
                     if diff["rf"] > 0:  # if the distance from the average species tree is greater than 0, store the 
                         list_keep.append(og)
                         dict_topology[og] = 1
@@ -841,9 +866,10 @@ def get_topology(ResultsPath):
                     dict_topology[og] = 1
                     continue
 
-    list_uniq = list(set(list_keep))    # remove duplicates from the list of HGT candidate OGs
+    list_uniq = list(set(list_keep))  # remove duplicates from the list of HGT candidate OGs
 
     return list_uniq
+
 
 def vennPlot(kaks_OG_list: list, tree_OG_list: list, topology_OG_list: list):
     """
@@ -860,11 +886,12 @@ def vennPlot(kaks_OG_list: list, tree_OG_list: list, topology_OG_list: list):
 
     """
     fig = venn3([set(kaks_OG_list),
-           set(tree_OG_list),
-           set(topology_OG_list)],
-          set_labels=('KaKs', 'Tree', 'Topology')
-          )
+                 set(tree_OG_list),
+                 set(topology_OG_list)],
+                set_labels=('KaKs', 'Tree', 'Topology')
+                )
     return fig
+
 
 def plotData(df):
     """
@@ -878,14 +905,15 @@ def plotData(df):
     """
 
     fig = px.violin(df,
-                    y = "dist", 
-                    x = "species", 
-                    color = "type", 
-                    box = True, 
-                    hover_data = df.columns)
+                    y="dist",
+                    x="species",
+                    color="type",
+                    box=True,
+                    hover_data=df.columns)
 
     return fig
     #fig.show()
+
 
 if __name__ == "__main__":
 
@@ -901,7 +929,7 @@ if __name__ == "__main__":
     if arg.gffread:
         prot_path, prot_all_file, cds_all_file, dict_species, irregular_proteins = prepare_gff_input(arg)
     else:
-        prot_path, prot_all_file, cds_all_file, dict_species, irregular_proteins = prepare_fasta_input(arg.input)
+        prot_path, prot_all_file, cds_all_file, dict_species, irregular_proteins = prepare_fasta_input(arg)
 
     if not arg.orthofinderResults:
         print("[+] File load complete; running Orthofinder...")
@@ -910,27 +938,26 @@ if __name__ == "__main__":
         print(f"[+] Scanning {arg.orthofinderResults} for previous OrthoFinder results")
         ResultsPath = arg.orthofinderResults
 
-
     dist_matrix_tree = parseOrthofinder(ResultsPath, arg.numberThreads)
     dist_matrix_tree = getHGT(dist_matrix_tree, dict_species)
 
     print("[+] Orthofinder scan completed; running KaKs Calculator...")
 
-    dist_matrix_kaks = parseKaKs(ResultsPath, arg.numberThreads, prot_all_file, cds_all_file)
+    dist_matrix_kaks = parseKaKs(arg, ResultsPath, prot_all_file, cds_all_file)
     dist_matrix_kaks = getHGT(dist_matrix_kaks, dict_species)
 
     print("[+] KaKs Calculator run completed; checking topologies...")
 
-
-    list_topology = get_topology(ResultsPath) # get the list of orthogroups with significantly different topology from that of the average species tree
+    list_topology = get_topology(
+        ResultsPath)  # get the list of orthogroups with significantly different topology from that of the average species tree
 
     # Create a Venn diagram of the criteria
-    list_kaks = dist_matrix_kaks.loc[dist_matrix_kaks['HGT'] == True,'OG'].to_list()
-    list_tree = dist_matrix_tree.loc[dist_matrix_tree['HGT'] == True,'OG'].to_list()
+    list_kaks = dist_matrix_kaks.loc[dist_matrix_kaks['HGT'] == True, 'OG'].to_list()
+    list_tree = dist_matrix_tree.loc[dist_matrix_tree['HGT'] == True, 'OG'].to_list()
     vennpath = os.path.join(output_folder, "vennplot.png")
     fig = vennPlot(list_kaks,
-             list_tree,
-             list_topology)
+                   list_tree,
+                   list_topology)
     plt.savefig(vennpath)
 
     # Find the intersection of the three criteria
@@ -942,20 +969,20 @@ if __name__ == "__main__":
 
     # Merge the two dataframes on the gene pairs
     full_matrix = pd.merge(dist_matrix_kaks,
-                          dist_matrix_tree[['gene_1', 'gene_2', 'dist', 'HGT']],
-                          how='inner',
-                          on=['gene_1', 'gene_2'],
-                          suffixes=['_kaks', '_tree'])
+                           dist_matrix_tree[['gene_1', 'gene_2', 'dist', 'HGT']],
+                           how='inner',
+                           on=['gene_1', 'gene_2'],
+                           suffixes=['_kaks', '_tree'])
 
     # Reorder the dataframe and add the topology score
     full_matrix = full_matrix[['gene_1', 'gene_2', 'OG', 'species', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']]
-    full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(int) # add the topology score if the OG appears in `list_topology`
+    full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(
+        int)  # add the topology score if the OG appears in `list_topology`
     full_matrix['irregular'] = full_matrix[["gene_1", "gene_2"]].isin(irregular_proteins).astype(int)
 
     # compute the final HGT score and sort the dataframe
     full_matrix['HGT'] = full_matrix['HGT_kaks'] + full_matrix['HGT_tree'] + full_matrix['HGT_topology']
     full_matrix.sort_values(by=['HGT'], inplace=True, ascending=False)
-
 
     # Go back to the original gene name from the ID introduced in the .gff file
     match = {}
@@ -984,9 +1011,10 @@ if __name__ == "__main__":
     with open(os.path.join(output_folder, 'Irregular_candidates.tsv'), 'x') as f:
         SeqIO.write(irregular_candidates, f, 'fasta')
     with open(os.path.join(output_folder, 'plot_data.tsv'), 'x') as f:
-        plot_matrix.to_csv(f, sep='\t',index=False)
+        plot_matrix.to_csv(f, sep='\t', index=False)
     # with open(os.path.join(output_folder, "HGT_violins.png"), 'x') as f:
     import plotly
+
     # Create a dataframe with the HGT scores from the KaKs, tree, and topology analyses
     fig = plotData(plot_matrix)
     plotly.offline.plot(fig, filename=os.path.join(output_folder, "HGT_violin_plots.png"))

@@ -81,7 +81,7 @@ ENV PATH=$PATH:/app/KaKs_Calculator3.0/src:/app/ParaAT2.0:/app/OrthoFinder
 
 RUN mkdir input
 
-#RUN cp -f /app/ParaAT.pl /app/ParaAT2.0/ParaAT.pl
+RUN cp -f /app/ParaAT.pl /app/ParaAT2.0/ParaAT.pl
 
 VOLUME /app/input
 # CMD python HGT.py -i /data/bioinf2023/PlantPath2023/genomeANDgff -OFr /data/bioinf2023/PlantPath2023/genomeANDgff/results/prot/f7b812/Results_Feb23  -v -nt 50
