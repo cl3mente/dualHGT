@@ -13,3 +13,5 @@
 /data/protein/72160e/
 /data/bioinf2023/PlantPath2023/genomeANDgff/results
 /venv/
+/SCtest_*
+/Verticillium_test_data/

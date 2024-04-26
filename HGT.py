@@ -32,10 +32,10 @@ from typing import Tuple, Dict
 # ORTHOFINDER = "/data/bioinf2023/PlantPath2023/OrthoFinder/orthofinder -f %s -t %s -o %s %s"
 
 # Docker versions
-PARAAT = "ParaAT.pl -h %s -a %s -n %s -p %s -o %s -f axt -v"
+PARAAT = "ParaAT.pl -h %s -a %s -n %s -p %s -o %s -f axt -t -v"
 KAKS = "KaKs -i %s -o %s -m %s"
 ORTHOFINDER = "orthofinder -f %s -t %s -o %s %s"
-GFFREAD = "gffread -w %s -y %s -F -C -g %s %s"
+GFFREAD = "gffread -w %s -y %s -F -S -C -g %s %s"
 
 
 def arguments():
@@ -66,7 +66,6 @@ def arguments():
     args = parser.parse_args()
 
     return (args)
-
 
 def prepare_fasta_input(arg):
     """
@@ -125,8 +124,7 @@ def prepare_fasta_input(arg):
                 if arg.verbose:
                     print(f"Irregular sequence, doesn't start with canonical 'ATG' start codon: {cds_seq.id}")
 
-            random_code = binascii.hexlify(os.urandom(10)).decode(
-                'utf8')  # Assign a unique gene tag to the entry, to avoid ambiguity
+            random_code = binascii.hexlify(os.urandom(10)).decode('utf8')  # Assign a unique gene tag to the entry, to avoid ambiguity
             random_name = f"gene_{random_code}"
             aa_seq = cds_seq.translate(id=random_name, description='')  # Translate the CDS into a protein sequence
             species_association['id'] = cds_seq.id  # Save the gene tag and the original gene name in a dictionary
@@ -208,22 +206,33 @@ def prepare_gff_input(arg):
         assert len(check) == 2, f"Error: expected 2 files for species {check}, got {len(check)}. Check your input."
 
     # here the gffread run will create *.faa_mod.fasta and *.fas_mod.fasta files in the `prot` and `cds` folders
-    gene_association, irregular_proteins = run_gffread(arg, file_matched)
+    gene_association_file, irregular_proteins_file = run_gffread(arg, file_matched)
 
     # Make a collection .fasta of all prot sequences and another .fasta with all cds sequences
-    prot_all_file = res_path + '/proteinfilefinal.faa'
-    cds_all_file = res_path + '/cdsfilefinal.fas'
-    cmd = 'cat ' + prot_path + '/*.faa_mod.fasta' + ' > ' + prot_all_file  # this .fasta file is a collection of all the aminoacid sequences
-    subprocess.run(cmd, shell=True)
-    cmd = 'cat ' + cds_path + '/*.fas_mod.fasta' + ' > ' + cds_all_file  # this .fasta file is a collection of all the coding DNA sequences
-    subprocess.run(cmd, shell=True)
+    cds_all_file, prot_all_file = create_collection_file(res_path)
 
     # the output of the function is:
     #   the path to the two .fasta files (AA and DNA)
     #   the gene association dictionary
     #   the protein path
     # print(gene_association)
-    return prot_path, prot_all_file, cds_all_file, gene_association, irregular_proteins
+    return prot_path, prot_all_file, cds_all_file, gene_association_file, irregular_proteins_file
+
+
+def create_collection_file(res_path):
+
+    prot_path = os.path.join(res_path, "prot")
+    cds_path = os.path.join(res_path, "cds")
+
+    prot_all_file = res_path + '/proteinfilefinal.faa'
+    cds_all_file = res_path + '/cdsfilefinal.fas'
+
+    # Dump all sequences into prot_all_file and
+    cmd = 'cat ' + prot_path + '/*.faa_mod.fasta' + ' > ' + prot_all_file  # this .fasta file is a collection of all the aminoacid sequences
+    subprocess.run(cmd, shell=True)
+    cmd = 'cat ' + cds_path + '/*.fas_mod.fasta' + ' > ' + cds_all_file  # this .fasta file is a collection of all the coding DNA sequences
+    subprocess.run(cmd, shell=True)
+    return cds_all_file, prot_all_file
 
 
 def pool_fastamod(pair: Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord]) -> Tuple[
@@ -255,7 +264,6 @@ def pool_fastamod(pair: Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord]) -> Tupl
     if not aa.seq.startswith('M'):
         irregular = True  # a flag to collect all irregular proteins
     return aa, cds, gene_association, irregular, random_code
-
 
 def run_gffread(arg, file_matched):
     """
@@ -318,7 +326,7 @@ def run_gffread(arg, file_matched):
                 g_ass['species'] = res_name
                 gene_association[random_name] = g_ass
                 if irregular:
-                    irregular_proteins.append(aa)
+                    irregular_proteins.append(gene_association[random_name]['id'])
 
         with open((res_prot_file + "_mod.fasta"), "w") as Ffileaa, open((res_cds_file + "_mod.fasta"), "w") as Ffilecds:
             SeqIO.write(aa_seqlist, Ffileaa, "fasta")
@@ -327,8 +335,17 @@ def run_gffread(arg, file_matched):
         os.remove(res_cds_file)
         os.remove(res_prot_file)
 
-    return gene_association, irregular_proteins
+    gene_association_file = os.path.join(res_path, "gene_association.txt")
 
+    with open(gene_association_file, "w") as GeneAssociationFile:
+        for k, v in gene_association.items():
+            GeneAssociationFile.write(str(k) + '\t'+ str(v['id']) + '\t'+ str(v['species']) + '\n')
+
+    irregular_proteins_file = os.path.join(res_path, "irregular_proteins.txt")
+    with open(irregular_proteins_file, "w") as IrregularProteins:
+        IrregularProteins.write("\n".join(irregular_proteins))
+
+    return gene_association_file, irregular_proteins_file
 
 def extract_pairs_from_files(res_cds_file, res_prot_file):
     iterator = []
@@ -341,13 +358,11 @@ def extract_pairs_from_files(res_cds_file, res_prot_file):
                 break
     return iterator
 
-
 def parse_gff(folder):
     gene_association = {}  # gene_association is a dict used to save the mapping between the tag and the actual gene name
 
     gff = [".gff", ".gff3", ".gtf"]
     filename_gff = [os.path.join(folder, file.name) for file in folder.iterdir() if file.suffix in gff]
-    count = 0
 
     for file in filename_gff:
         with open(file + "_mod_gff", "w") as fho:
@@ -356,16 +371,15 @@ def parse_gff(folder):
                     if line.startswith("#"):
                         continue
                     elif len(line.split("\t")) == 9 and line.split("\t")[2].startswith(("mRNA", "CDS")):
-                        count += 1
+                        random_code = binascii.hexlify(os.urandom(10)).decode('utf8')
                         genes_collection = [file.rsplit(".", 1)[0].rsplit("/", 1)[1], line.replace("\t", " ").rstrip()]
-                        line = line.rstrip() + ";HGT=gene_" + str(count)  #TODO to add an index for each genome file # ?
+                        line = line.rstrip() + ";HGT=gene_" + str(random_code)  #TODO to add an index for each genome file # ?
                         fho.write(line + "\n")
-                        gene_association["gene_" + str(count)] = genes_collection
+                        gene_association["gene_" + str(random_code)] = genes_collection
                     else:
                         fho.write(line)
 
     return gene_association
-
 
 def orthoResults(prot_path, arg):
     """
@@ -410,7 +424,6 @@ def orthoResults(prot_path, arg):
 
     return orthofinder_output_folder
 
-
 def getSpNames(ResultsPath):
     """
     Retrieve the names of the species from the species tree file, created by OrthoFinder.
@@ -426,7 +439,6 @@ def getSpNames(ResultsPath):
 
         # speciesNames è una lista di stringhe con i nomi delle specie
         return speciesNames
-
 
 def read_tree(info):
     """
@@ -470,7 +482,6 @@ def read_tree(info):
 
     return distances
 
-
 def parseOrthofinder(ResultsPath: str, threads: int) -> list:
     """
     A function to parse the Orthofinder results and return a list of entries containing the gene pairs and their distances.
@@ -505,7 +516,6 @@ def parseOrthofinder(ResultsPath: str, threads: int) -> list:
 
     return distances
 
-
 def kaksparallel(file: str) -> list:
     """
     Runs the KaKs calculator program in the shell.
@@ -535,7 +545,6 @@ def kaksparallel(file: str) -> list:
     list_entry = read_kaks_file(output)
 
     return list_entry
-
 
 def read_kaks_file(kaks_filename: str) -> list:
     with open(kaks_filename, newline='') as resultskaks:
@@ -602,7 +611,7 @@ def parseKaKs(arg, ResultsPath, proteinfilefinal, cdsfilefinal):
                         #   {"gene1-gene2": "OG"}
                         dict_match[gene1 + "-" + gene2] = group_name
 
-    kaksfolder = os.path.join(os.getcwd(), 'results', "KaKs_results")
+    kaksfolder = os.path.join(os.getcwd(), 'input', 'results', "KaKs_results")
 
     # check if there's any .axt filepath from paraAT
 
@@ -710,10 +719,12 @@ def append_species(entry_list, dict_species):
     final = []
     for line in entry_list:
 
-        if dict_species[line[0]]:
+        try:
             species1 = dict_species[line[0]]['species']
-        if dict_species[line[1]]:
             species2 = dict_species[line[1]]['species']
+        except KeyError:
+            print(f'Gene Code missing from association dictionary: {line[0]} and {line[1]}')
+            continue
         if species1 == species2:
             continue
         if species1 < species2:
@@ -727,7 +738,6 @@ def append_species(entry_list, dict_species):
                           columns=["gene_1", "gene_2", "OG", "dist", "type", "species"])
 
     return matrix
-
 
 def getMeanDist(comp):
     print(f"analyzing {comp.iloc[0, 4]}...")
@@ -924,32 +934,74 @@ if __name__ == "__main__":
     output_folder = os.path.join(arg.input, 'output', current_date.strftime("HGTResults_%d_%b_%Y__%H_%M"))
     os.makedirs(output_folder)
 
-    print("[+] Reading the input files...")
+    results_path = os.path.join(os.getcwd(), 'input', 'results')
 
-    if arg.gffread:
-        prot_path, prot_all_file, cds_all_file, dict_species, irregular_proteins = prepare_gff_input(arg)
+    if os.path.exists(results_path) and os.listdir(results_path):
+
+        print(f"[+] Scanning {results_path} for previous runs and results...")
+
+        try:
+            prot_all_file = os.path.join(results_path, "proteinfilefinal.faa")
+            cds_all_file = os.path.join(results_path, "cdsfilefinal.fas")
+            prot_path = os.path.join(results_path, "prot")
+            cds_path = os.path.join(results_path, "cds")
+            dict_species_file = os.path.join(results_path, "gene_association.txt")
+            irregular_proteins_file = os.path.join(results_path, "irregular_proteins.txt")
+
+        except FileNotFoundError:
+            print('Some file is missing, running the file preparation pipeline...')
+
+        else:
+            dict_species = {}
+            irregular_proteins = []
+            with open(dict_species_file, 'r') as f:
+                for i in f.readlines():
+                    code, name, species = i.split('\t')
+                    dict_species[code] = {'id': name, 'species': species}
+            with open(irregular_proteins_file, 'r') as f:
+                for i in f.readlines():
+                    irregular_proteins.append(i.strip())
+
+        if arg.orthofinderResults:
+            orthofinder_results_path = arg.orthofinderResults
+
     else:
-        prot_path, prot_all_file, cds_all_file, dict_species, irregular_proteins = prepare_fasta_input(arg)
 
-    if not arg.orthofinderResults:
-        print("[+] File load complete; running Orthofinder...")
-        ResultsPath = orthoResults(prot_path, arg)
+        print("[+] Reading and preparing the input files...")
+
+        if arg.gffread: # Prepare the input files, coming in a .gff format
+            prot_path, prot_all_file, cds_all_file, dict_species_file, irregular_proteins_file = prepare_gff_input(arg)
+            dict_species = {}
+            irregular_proteins = []
+            with open(dict_species_file, 'r') as f:
+                for i in f.readlines():
+                    code, name, species = i.split('\t')
+                    dict_species[code] = {'id':name,'species':species}
+            with open(irregular_proteins_file, 'r') as f:
+                for i in f.readlines():
+                    irregular_proteins.append(i.strip())
+        else: # Prepare the input files, coming in a .fasta genome format
+            prot_path, prot_all_file, cds_all_file, dict_species, irregular_proteins = prepare_fasta_input(arg)
+
+        print("[+] File load and preparation complete; running Orthofinder...")
+
+    if arg.orthofinderResults:
+        orthofinder_results_path = arg.orthofinderResults
     else:
-        print(f"[+] Scanning {arg.orthofinderResults} for previous OrthoFinder results")
-        ResultsPath = arg.orthofinderResults
+        orthofinder_results_path = orthoResults(prot_path, arg)
 
-    dist_matrix_tree = parseOrthofinder(ResultsPath, arg.numberThreads)
+    dist_matrix_tree = parseOrthofinder(orthofinder_results_path, arg.numberThreads)
     dist_matrix_tree = getHGT(dist_matrix_tree, dict_species)
 
     print("[+] Orthofinder scan completed; running KaKs Calculator...")
 
-    dist_matrix_kaks = parseKaKs(arg, ResultsPath, prot_all_file, cds_all_file)
+    dist_matrix_kaks = parseKaKs(arg, orthofinder_results_path, prot_all_file, cds_all_file)
     dist_matrix_kaks = getHGT(dist_matrix_kaks, dict_species)
 
     print("[+] KaKs Calculator run completed; checking topologies...")
 
     list_topology = get_topology(
-        ResultsPath)  # get the list of orthogroups with significantly different topology from that of the average species tree
+        orthofinder_results_path)  # get the list of orthogroups with significantly different topology from that of the average species tree
 
     # Create a Venn diagram of the criteria
     list_kaks = dist_matrix_kaks.loc[dist_matrix_kaks['HGT'] == True, 'OG'].to_list()

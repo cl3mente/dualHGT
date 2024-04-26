@@ -31,8 +31,10 @@ OrthoFinder
 **/npm-debug.log
 **/obj
 **/venv
+**/Verticillium_test_data
 **/secrets.dev.yaml
 **/values.dev.yaml
+**/SCtest**
 plot_data.tsv
 intersection.tsv
 HGT_candidates.tsv
