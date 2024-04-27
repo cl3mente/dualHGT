@@ -1045,7 +1045,8 @@ if __name__ == "__main__":
     # Go back to the original gene name from the ID introduced in the .gff file
     match = {}
     for key, value in gene_association.items():
-        sp_name, genID = value['species'], value['id']
+        sp_name = value['species']
+        genID = value['id']
         try:
             genID = genID.split('ID=')[-1].split(";")[0]
         except:
