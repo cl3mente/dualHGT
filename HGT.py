@@ -320,13 +320,13 @@ def run_gffread(arg, file_matched):
         with mp.Pool(arg.numberThreads) as p:
             for x in tqdm.tqdm(p.imap_unordered(pool_fastamod, iterator), total=len(iterator),
                                desc=f"Processing '{res_prot_file}' and '{res_cds_file}' sequences..."):
-                aa, cds, g_ass, irregular, random_name = x
+                aa, cds, g_ass, irregular, random_code = x
                 aa_seqlist.append(aa)
                 cds_seqlist.append(cds)
                 g_ass['species'] = res_name
-                gene_association[random_name] = g_ass
+                gene_association[random_code] = g_ass
                 if irregular:
-                    irregular_proteins.append(gene_association[random_name]['id'])
+                    irregular_proteins.append(gene_association[random_code]['id'])
 
         with open((res_prot_file + "_mod.fasta"), "w") as Ffileaa, open((res_cds_file + "_mod.fasta"), "w") as Ffilecds:
             SeqIO.write(aa_seqlist, Ffileaa, "fasta")
@@ -339,6 +339,7 @@ def run_gffread(arg, file_matched):
 
     with open(gene_association_file, "w") as GeneAssociationFile:
         for k, v in gene_association.items():
+            # writing like: random_code - original id - species
             GeneAssociationFile.write(str(k) + '\t'+ str(v['id']) + '\t'+ str(v['species']) + '\n')
 
     irregular_proteins_file = os.path.join(res_path, "irregular_proteins.txt")
@@ -373,9 +374,9 @@ def parse_gff(folder):
                     elif len(line.split("\t")) == 9 and line.split("\t")[2].startswith(("mRNA", "CDS")):
                         random_code = binascii.hexlify(os.urandom(10)).decode('utf8')
                         genes_collection = [file.rsplit(".", 1)[0].rsplit("/", 1)[1], line.replace("\t", " ").rstrip()]
-                        line = line.rstrip() + ";HGT=gene_" + str(random_code)  #TODO to add an index for each genome file # ?
+                        line = line.rstrip() + ";HGT=gene_" + str(random_code)
                         fho.write(line + "\n")
-                        gene_association["gene_" + str(random_code)] = genes_collection
+                        gene_association[str(random_code)] = genes_collection
                     else:
                         fho.write(line)
 
@@ -936,9 +937,9 @@ if __name__ == "__main__":
 
     results_path = os.path.join(os.getcwd(), 'input', 'results')
 
-    if os.path.exists(results_path) and os.listdir(results_path):
+    print(f"[+] Scanning {results_path} for previous runs and results...")
 
-        print(f"[+] Scanning {results_path} for previous runs and results...")
+    if os.path.exists(results_path) and os.listdir(results_path):
 
         try:
             prot_all_file = os.path.join(results_path, "proteinfilefinal.faa")
@@ -949,7 +950,7 @@ if __name__ == "__main__":
             irregular_proteins_file = os.path.join(results_path, "irregular_proteins.txt")
 
         except FileNotFoundError:
-            print('Some file is missing, running the file preparation pipeline...')
+            print('Some files are missing, running the file preparation pipeline...')
 
         else:
             dict_species = {}
@@ -976,7 +977,7 @@ if __name__ == "__main__":
             with open(dict_species_file, 'r') as f:
                 for i in f.readlines():
                     code, name, species = i.split('\t')
-                    dict_species[code] = {'id':name,'species':species}
+                    dict_species[code] = {'id': name, 'species': species}
             with open(irregular_proteins_file, 'r') as f:
                 for i in f.readlines():
                     irregular_proteins.append(i.strip())
