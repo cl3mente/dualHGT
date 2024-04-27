@@ -728,7 +728,7 @@ def append_species(entry_list, gene_association):
             species1 = gene_association[code1]['species']
             species2 = gene_association[code2]['species']
         except KeyError:
-            print(f'Gene Code missing from association dictionary: {line[0]} and {line[1]}')
+            print(f'Gene Code missing from association dictionary: {code1} and {code2}')
             continue
         if species1 == species2:
             continue
@@ -1035,7 +1035,8 @@ if __name__ == "__main__":
     full_matrix = full_matrix[['gene_1', 'gene_2', 'OG', 'species', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']]
     full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(
         int)  # add the topology score if the OG appears in `list_topology`
-    full_matrix['irregular'] = full_matrix[["gene_1", "gene_2"]].isin(irregular_proteins).astype(int)
+    mask = (full_matrix['gene_1'].isin(irregular_proteins)) | (full_matrix['gene_2'].isin(irregular_proteins))
+    full_matrix['irregular'] = mask.astype(int)
 
     # compute the final HGT score and sort the dataframe
     full_matrix['HGT'] = full_matrix['HGT_kaks'] + full_matrix['HGT_tree'] + full_matrix['HGT_topology']
@@ -1044,13 +1045,18 @@ if __name__ == "__main__":
     # Go back to the original gene name from the ID introduced in the .gff file
     match = {}
     for key, value in gene_association.items():
-        sp_name, genID = value[0], value[1]
-        genID = genID.split('ID=')[-1].split(";")[0]
+        sp_name, genID = value['species'], value['id']
+        try:
+            genID = genID.split('ID=')[-1].split(";")[0]
+        except:
+            pass
         mvalue = '_'.join([sp_name, genID])
         match[key] = mvalue
 
-    full_matrix['gene_1'] = full_matrix['gene_1'].map(match)
+    full_matrix['gene_1'] = full_matrix['gene_1'].map(match) #TODO fix the match because then HGT_output.tsv is empty
     full_matrix['gene_2'] = full_matrix['gene_2'].map(match)
+
+    print(head(full_matrix))
 
     """
     names = {}
