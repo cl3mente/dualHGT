@@ -74,7 +74,6 @@ def prepare_fasta_input(arg):
         arg: program parameters
     :return:
     """
-    irregular_proteins = []
 
     res_path = os.path.join(arg.input, "results")
     prot_path = os.path.join(arg.input, 'prot')
@@ -93,19 +92,15 @@ def prepare_fasta_input(arg):
         print(f"Error creating directory '{res_path}': {e}")
         raise SystemExit
 
-    prot_all_file = res_path + '/proteinfilefinal.faa'
-    cds_all_file = res_path + '/cdsfilefinal.fas'
-
-    prot_all = ''
-    cds_all = ''
-
     gene_association = {}
+    irregular_proteins = []
 
     # separate the protein and CDS files in the input directory in two distinct folders
     # for this to work, the protein files should have the .faa extension and the CDS files should have the .fna extension
     extensions = ('.fasta', '.faa', '.fa')
     fasta_files = [f for f in os.listdir(arg.input) if f.endswith(extensions)]
     assert fasta_files, 'Error: No .fasta files found in your input directory. Only .fasta file formats accepted as input.'
+    assert len(fasta_files) % 2 == 0, "Error: expected 2 files per species \n\tCheck your input?"
 
     for filename in fasta_files:  #select the files, process them one by one
 
@@ -119,18 +114,27 @@ def prepare_fasta_input(arg):
         cds_seqlist = []
 
         for cds_seq in SeqIO.parse(filename, "fasta"):
-            if cds_seq.seq[0:2] != 'ATG':
+
+            if cds_seq.seq[0:3] != 'ATG': # Check if the sequence starts with the canonical start codon
+                # if not, add it to the list of irregular proteins
                 irregular_proteins.append(cds_seq)
                 if arg.verbose:
                     print(f"Irregular sequence, doesn't start with canonical 'ATG' start codon: {cds_seq.id}")
 
-            random_code = binascii.hexlify(os.urandom(10)).decode('utf8')  # Assign a unique gene tag to the entry, to avoid ambiguity
+            # Create and assign a unique gene tag to the entry, to avoid ambiguity
+            random_code = binascii.hexlify(os.urandom(10)).decode('utf8')
             random_name = f"gene_{random_code}"
-            aa_seq = cds_seq.translate(id=random_name, description='')  # Translate the CDS into a protein sequence
-            species_association['id'] = cds_seq.id  # Save the gene tag and the original gene name in a dictionary
-            species_association['species'] = filename.split('.')[0]
+
+            # Translate the CDS into a protein sequence
+            aa_seq = cds_seq.translate(id=random_name, description='')
+
+            # Save the gene tag and the original gene name in a dictionary
+            species_association['id'] = cds_seq.id  
+            species_association['species'] = res_name
             cds_seq.id = random_name
             cds_seq.description = ''
+
+            # Append to the seqlist files
             aa_seqlist.append(cds_seq)
             cds_seqlist.append(aa_seq)
 
@@ -144,13 +148,10 @@ def prepare_fasta_input(arg):
         with open(res_cds_file, "w") as Ffilecds:
             SeqIO.write(cds_seqlist, Ffilecds, "fasta")
 
-    # Write the single files containing all sequences (required in later steps)
-    with open(prot_all_file, 'w') as fh:
-        fh.write(prot_all)
-    with open(cds_all_file, 'w') as fh:
-        fh.write(cds_all)
+    gene_association_file, irregular_proteins_file = create_g_ass_and_irr_prot_files(res_path, irregular_proteins, gene_association)
+    cds_all_file, prot_all_file = create_collection_file(res_path)
 
-    return (res_path, prot_all_file, cds_all_file, gene_association, irregular_proteins)
+    return (res_path, prot_all_file, cds_all_file, gene_association_file, irregular_proteins_file)
 
 def prepare_gff_input(arg):
     """
@@ -221,7 +222,6 @@ def prepare_gff_input(arg):
     #   the irregular protein filepath
     return prot_path, prot_all_file, cds_all_file, gene_association_file, irregular_proteins_file
 
-
 def create_collection_file(res_path):
 
     prot_path = os.path.join(res_path, "prot")
@@ -235,6 +235,7 @@ def create_collection_file(res_path):
     subprocess.run(cmd, shell=True)
     cmd = 'cat ' + cds_path + '/*.fas_mod.fasta' + ' > ' + cds_all_file  # this .fasta file is a collection of all the coding DNA sequences
     subprocess.run(cmd, shell=True)
+
     return cds_all_file, prot_all_file
 
 def pool_fastamod(pair: Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord]) -> Tuple[
@@ -337,6 +338,12 @@ def run_gffread(arg, file_matched):
         os.remove(res_cds_file)
         os.remove(res_prot_file)
 
+    gene_association_file, irregular_proteins_file = create_g_ass_and_irr_prot_files(res_path, irregular_proteins, gene_association)
+
+    return gene_association_file, irregular_proteins_file
+
+def create_g_ass_and_irr_prot_files(res_path, irregular_proteins, gene_association):
+
     gene_association_file = os.path.join(res_path, "gene_association.txt")
 
     with open(gene_association_file, "w") as GeneAssociationFile:
@@ -345,6 +352,7 @@ def run_gffread(arg, file_matched):
             GeneAssociationFile.write(str(k) + '\t'+ str(v['id']) + '\t'+ str(v['species']) + '\n')
 
     irregular_proteins_file = os.path.join(res_path, "irregular_proteins.txt")
+
     with open(irregular_proteins_file, "w") as IrregularProteins:
         IrregularProteins.write("\n".join(irregular_proteins))
 
@@ -558,7 +566,6 @@ def read_kaks_file(kaks_filename: str) -> list:
                 list_entry = [line.split('\t')[i] for i in [0, 3]]
     return list_entry
 
-
 def parseKaKs(arg, ResultsPath, proteinfilefinal, cdsfilefinal):
     """
     A function to combine the gene pairs from the Orthofinder results and the KaKs distances.
@@ -699,7 +706,6 @@ def parseKaKs(arg, ResultsPath, proteinfilefinal, cdsfilefinal):
 
     return distances
 
-
 def append_species(entry_list, gene_association):
     """
     Transform an entry list (a list of rows) into a canonical pd.DataFrame.
@@ -752,7 +758,6 @@ def getMeanDist(comp):
     comp.sort_values(by=["mean_dist"], inplace=True, ascending=False)
 
     return comp[comp.mean_dist > 0]
-
 
 def getHGT(matrix, gene_association):
     """
@@ -831,7 +836,6 @@ def getHGT(matrix, gene_association):
     dist_tree_sorted = dist_tree.sort_values(by='dist') 
     """
 
-
 def get_topology(ResultsPath):
     """
     Parameters
@@ -885,7 +889,6 @@ def get_topology(ResultsPath):
 
     return list_uniq
 
-
 def vennPlot(kaks_OG_list: list, tree_OG_list: list, topology_OG_list: list):
     """
     Make a Venn Diagram. Easy.
@@ -906,7 +909,6 @@ def vennPlot(kaks_OG_list: list, tree_OG_list: list, topology_OG_list: list):
                 set_labels=('KaKs', 'Tree', 'Topology')
                 )
     return fig
-
 
 def plotData(df):
     """
@@ -929,6 +931,33 @@ def plotData(df):
     return fig
     #fig.show()
 
+def prepare_input(arg):
+
+    if arg.gffread: # Prepare the input files, coming in a .gff format
+        prot_path, prot_all_file, cds_all_file, gene_association_file, irregular_proteins_file = prepare_gff_input(arg)
+        gene_association = {}
+        irregular_proteins = []
+        with open(gene_association_file, 'r') as f:
+            for i in f.readlines():
+                code, name, species = i.split('\t')
+                gene_association[code] = {'id': name, 'species': species}
+        with open(irregular_proteins_file, 'r') as f:
+            for i in f.readlines():
+                irregular_proteins.append(i.strip())
+
+    else: # Prepare the input files, coming in a .fasta genome format
+        prot_path, prot_all_file, cds_all_file, gene_association_file, irregular_proteins_file = prepare_fasta_input(arg)
+        gene_association = {}
+        irregular_proteins = []
+        with open(gene_association_file, 'r') as f:
+            for i in f.readlines():
+                code, name, species = i.split('\t')
+                gene_association[code] = {'id': name, 'species': species}
+        with open(irregular_proteins_file, 'r') as f:
+            for i in f.readlines():
+                irregular_proteins.append(i.strip())
+
+    return prot_all_file,cds_all_file,prot_path,gene_association,irregular_proteins
 
 if __name__ == "__main__":
 
@@ -936,15 +965,19 @@ if __name__ == "__main__":
 
     # Create a folder with date and time of the run to store the output
     current_date = datetime.now()
-    output_folder = os.path.join(arg.input, 'output', current_date.strftime("HGTResults_%d_%b_%Y__%H_%M"))
-    os.makedirs(output_folder)
+    output_folder = os.path.join(arg.input, 'output', current_date.strftime("HGTResults_%d-%b-%Y_%H_%M_%S"))
+
+    try:
+        os.makedirs(output_folder)
+    except FileExistsError:
+        print(f"Folder '{output_folder}' already exists. Wait a second??")
 
     results_path = os.path.join(os.getcwd(), 'input', 'results')
 
-    print(f"[+] Scanning {results_path} for previous runs and results...")
-
     if os.path.exists(results_path) and os.listdir(results_path):
 
+        print(f"[+] Scanning {results_path} for previous runs and results...")
+        
         try:
             prot_all_file = os.path.join(results_path, "proteinfilefinal.faa")
             cds_all_file = os.path.join(results_path, "cdsfilefinal.fas")
@@ -954,9 +987,13 @@ if __name__ == "__main__":
             irregular_proteins_file = os.path.join(results_path, "irregular_proteins.txt")
 
         except FileNotFoundError:
-            print('Some files are missing, running the file preparation pipeline...')
+            print('[+] Some files are missing, restarting the file preparation pipeline...')
+            cmd = ['rm', '-r', results_path]
+            subprocess.run(cmd, shell=True)
+            prot_all_file, cds_all_file, prot_path, gene_association, irregular_proteins = prepare_input(arg)
 
         else:
+            # create the gene_association dictionary and the irregular_proteins list from files left by the previous run
             gene_association = {}
             irregular_proteins = []
             with open(gene_association_file, 'r') as f:
@@ -974,19 +1011,7 @@ if __name__ == "__main__":
 
         print("[+] Reading and preparing the input files...")
 
-        if arg.gffread: # Prepare the input files, coming in a .gff format
-            prot_path, prot_all_file, cds_all_file, gene_association_file, irregular_proteins_file = prepare_gff_input(arg)
-            gene_association = {}
-            irregular_proteins = []
-            with open(gene_association_file, 'r') as f:
-                for i in f.readlines():
-                    code, name, species = i.split('\t')
-                    gene_association[code] = {'id': name, 'species': species}
-            with open(irregular_proteins_file, 'r') as f:
-                for i in f.readlines():
-                    irregular_proteins.append(i.strip())
-        else: # Prepare the input files, coming in a .fasta genome format
-            prot_path, prot_all_file, cds_all_file, gene_association, irregular_proteins = prepare_fasta_input(arg)
+        prot_all_file, cds_all_file, prot_path, gene_association, irregular_proteins = prepare_input(arg)
 
         print("[+] File load and preparation complete; running Orthofinder...")
 
@@ -1057,7 +1082,7 @@ if __name__ == "__main__":
     full_matrix['gene_1'].map(match)
     full_matrix['gene_2'].map(match)
 
-    print(head(full_matrix))
+    print(full_matrix.head())
 
     """
     names = {}
