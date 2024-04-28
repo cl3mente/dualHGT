@@ -1057,7 +1057,7 @@ if __name__ == "__main__":
     full_matrix['gene_1'] = full_matrix['gene_1'].map(match) #TODO fix the match because then HGT_output.tsv is empty
     full_matrix['gene_2'] = full_matrix['gene_2'].map(match)
 
-    print(head(full_matrix))
+    print(full_matrix.head)
 
     """
     names = {}
