@@ -1077,10 +1077,10 @@ if __name__ == "__main__":
         mvalue = '_'.join([sp_name, genID])
         match[f"gene_{key}"] = mvalue
 
-    dist_matrix_kaks['gene_1'].map(match)
-    dist_matrix_kaks['gene_2'].map(match)
-    dist_matrix_tree['gene_1'].map(match)
-    dist_matrix_tree['gene_2'].map(match)
+    dist_matrix_kaks['gene_1'] = dist_matrix_kaks['gene_1'].map(match)
+    dist_matrix_kaks['gene_2'] = dist_matrix_kaks['gene_2'].map(match)
+    dist_matrix_tree['gene_1'] = dist_matrix_tree['gene_1'].map(match)
+    dist_matrix_tree['gene_2'] = dist_matrix_tree['gene_2'].map(match)
 
     print(dist_matrix_kaks.head())
 
