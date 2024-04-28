@@ -1052,10 +1052,10 @@ if __name__ == "__main__":
         except:
             pass
         mvalue = '_'.join([sp_name, genID])
-        match[key] = mvalue
+        match[f"gene_{key}"] = mvalue
 
-    full_matrix['gene_1'] = full_matrix['gene_1'].map(match) #TODO fix the match because then HGT_output.tsv is empty
-    full_matrix['gene_2'] = full_matrix['gene_2'].map(match)
+    full_matrix['gene_1'].map(match)
+    full_matrix['gene_2'].map(match)
 
     print(full_matrix.head)
 
