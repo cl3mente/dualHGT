@@ -1033,8 +1033,11 @@ if __name__ == "__main__":
 
     # Reorder the dataframe and add the topology score
     full_matrix = full_matrix[['gene_1', 'gene_2', 'OG', 'species', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']]
-    full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(
-        int)  # add the topology score if the OG appears in `list_topology`
+
+    # add the topology score if the OG appears in `list_topology`
+    full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(int)
+
+    # add a flag if one of the genes was marked as irregular
     mask = (full_matrix['gene_1'].isin(irregular_proteins)) | (full_matrix['gene_2'].isin(irregular_proteins))
     full_matrix['irregular'] = mask.astype(int)
 
@@ -1051,23 +1054,14 @@ if __name__ == "__main__":
             genID = genID.split('ID=')[-1].split(";")[0]
         except:
             pass
-        mvalue = '_'.join([sp_name, genID])
-        match[f"gene_{key}"] = mvalue
+        match_value = '_'.join([sp_name, genID])
+        match[f"gene_{key}"] = match_value
 
     full_matrix['gene_1'].map(match)
     full_matrix['gene_2'].map(match)
 
-    print(full_matrix.head)
+    print(full_matrix.head())
 
-    """
-    names = {}
-    for i in full_matrix['gene_1']:
-
-        if i in match:
-
-            names.append(match[i])
-    full_matrix['gene_1'] = names
-    """
     plot_matrix = pd.concat([dist_matrix_kaks, dist_matrix_tree], axis=0)
 
     with open(os.path.join(output_folder, 'HGT_output.tsv'), 'x') as f:
