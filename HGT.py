@@ -1062,8 +1062,7 @@ if __name__ == "__main__":
     intersection = list(set([i for i in list_kaks if i in list_tree and i in list_topology]))
     print(f'[+] Found {len(intersection)} genes that satisfy all three criteria.')
     irregular_candidates = list(set([i for i in intersection if i in irregular_proteins]))
-    if irregular_candidates:
-        print(f"Warning: {len(irregular_candidates)} of them are found to be irregular sequences.")
+    print(f"With {len(irregular_candidates)} of them in the irregular sequences collection.")
 
 
     # Go back to the original gene name from the ID introduced in the .gff file
@@ -1082,6 +1081,8 @@ if __name__ == "__main__":
     dist_matrix_kaks['gene_2'].map(match)
     dist_matrix_tree['gene_1'].map(match)
     dist_matrix_tree['gene_2'].map(match)
+
+    print(dist_matrix_kaks.head())
 
     # Merge the two dataframes on the gene pairs
     full_matrix = pd.merge(dist_matrix_kaks,
