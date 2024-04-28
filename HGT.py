@@ -480,8 +480,8 @@ def read_tree(info):
 
         type = "tree"
 
-        name1 = name1.split("_")[-1]
-        name2 = name2.split("_")[-1]
+        name1 = f"gene_{name1.split('_')[-1]}"
+        name2 = f"gene_{name2.split('_')[-1]}"
 
         if name1 < name2:
             name1, name2 = name2, name1
@@ -547,9 +547,13 @@ def kaksparallel(file: str) -> list:
                           output,  # the output file
                           "NG")  # NG is the model used for the calculation
         run = subprocess.Popen(runkaks, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+
         out, err = run.communicate()
-        # print(out)
-        print(err)
+        if arg.verbose:
+            if out:
+                print(out)
+            if err:
+                print(err)
 
     # read the output file and return the gene pair and their distance
     list_entry = read_kaks_file(output)
@@ -955,7 +959,7 @@ def prepare_input(arg):
         with open(gene_association_file, 'r') as f:
             for i in f.readlines():
                 code, name, species = i.split('\t')
-                gene_association[code] = {'id': name, 'species': species}
+                gene_association[code] = {'id': name.strip(), 'species': species.strip()}
         with open(irregular_proteins_file, 'r') as f:
             for i in f.readlines():
                 irregular_proteins.append(i.strip())
@@ -968,7 +972,7 @@ def prepare_input(arg):
         with open(gene_association_file, 'r') as f:
             for i in f.readlines():
                 code, name, species = i.split('\t')
-                gene_association[code] = {'id': name, 'species': species}
+                gene_association[code] = {'id': name.strip(), 'species': species.strip()}
         with open(irregular_proteins_file, 'r') as f:
             for i in f.readlines():
                 irregular_proteins.append(i.strip())
@@ -981,7 +985,7 @@ if __name__ == "__main__":
 
     # Create a folder with date and time of the run to store the output
     current_date = datetime.now()
-    output_folder = os.path.join(os.getcwd(), 'output', current_date.strftime("HGTResults_%d-%b-%Y_%H_%M_%S"))
+    output_folder = os.path.join(arg.input, 'output', current_date.strftime("HGTResults_%d-%b-%Y_%H_%M_%S"))
 
     try:
         os.makedirs(output_folder)
@@ -1062,14 +1066,19 @@ if __name__ == "__main__":
     intersection = list(set([i for i in list_kaks if i in list_tree and i in list_topology]))
     print(f'[+] Found {len(intersection)} genes that satisfy all three criteria.')
     irregular_candidates = list(set([i for i in intersection if i in irregular_proteins]))
-    print(f"With {len(irregular_candidates)} of them in the irregular sequences collection.")
+    print(f"\tWith {len(irregular_candidates)} of them in the irregular sequences collection.")
+
+
+    print("\ndist matrices (kaks and tree) before merge\n")
+    print(dist_matrix_kaks.head())
+    print(dist_matrix_tree.head())
 
 
     # Go back to the original gene name from the ID introduced in the .gff file
     match = {}
     for key, value in gene_association.items():
-        sp_name = value['species']
-        genID = value['id']
+        sp_name = value['species'].strip()
+        genID = value['id'].strip()
         try:
             genID = genID.split('ID=')[-1].split(";")[0]
         except:
@@ -1077,19 +1086,15 @@ if __name__ == "__main__":
         mvalue = '_'.join([sp_name, genID])
         match[f"gene_{key}"] = mvalue
 
-    dist_matrix_kaks['gene_1'] = dist_matrix_kaks['gene_1'].map(match)
-    dist_matrix_kaks['gene_2'] = dist_matrix_kaks['gene_2'].map(match)
-    dist_matrix_tree['gene_1'] = dist_matrix_tree['gene_1'].map(match)
-    dist_matrix_tree['gene_2'] = dist_matrix_tree['gene_2'].map(match)
-
-    print(dist_matrix_kaks.head())
-
     # Merge the two dataframes on the gene pairs
     full_matrix = pd.merge(dist_matrix_kaks,
                            dist_matrix_tree[['gene_1', 'gene_2', 'dist', 'HGT']],
                            how='inner',
                            on=['gene_1', 'gene_2'],
-                           suffixes=['_kaks', '_tree'])
+                           suffixes=('_kaks', '_tree'))
+
+    print("fullmatrix before changes")
+    print(full_matrix.head())
 
     # Reorder the dataframe and add the topology score
     full_matrix = full_matrix[['gene_1', 'gene_2', 'OG', 'species', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']]
@@ -1105,6 +1110,13 @@ if __name__ == "__main__":
     full_matrix['HGT'] = full_matrix['HGT_kaks'] + full_matrix['HGT_tree'] + full_matrix['HGT_topology']
     full_matrix.sort_values(by=['HGT'], inplace=True, ascending=False)
 
+    print("fullmatrix after changes")
+    print(full_matrix.head())
+
+    full_matrix['gene_1'] = full_matrix['gene_1'].map(match)
+    full_matrix['gene_2'] = full_matrix['gene_2'].map(match)
+
+    print("fullmatrix after map match")
     print(full_matrix.head())
 
     with open(os.path.join(output_folder, 'HGT_output.tsv'), 'x') as f:
@@ -1115,5 +1127,7 @@ if __name__ == "__main__":
     # Create a dataframe suitable for plotting
     import plotly
     plot_matrix = pd.concat([dist_matrix_kaks, dist_matrix_tree], axis=0)
+    plot_matrix['gene_1'] = plot_matrix['gene_1'].map(match)
+    plot_matrix['gene_2'] = plot_matrix['gene_2'].map(match)
     fig = plotData(plot_matrix)
-    plotly.offline.plot(fig, filename=os.path.join(output_folder, "HGT_violin_plots.png"))
+    plotly.offline.plot(fig, filename=os.path.join(output_folder, "HGT_violin_plots.html"))
