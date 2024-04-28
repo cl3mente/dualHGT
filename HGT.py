@@ -95,14 +95,14 @@ def prepare_fasta_input(arg):
     gene_association = {}
     irregular_proteins = []
 
-    # separate the protein and CDS files in the input directory in two distinct folders
-    # for this to work, the protein files should have the .faa extension and the CDS files should have the .fna extension
+    # Retrieve the .fasta files, containing the CDS sequences, in the input directory
     extensions = ('.fasta', '.faa', '.fa')
     fasta_files = [f for f in os.listdir(arg.input) if f.endswith(extensions)]
+
     assert fasta_files, 'Error: No .fasta files found in your input directory. Only .fasta file formats accepted as input.'
     assert len(fasta_files) % 2 == 0, "Error: expected 2 files per species \n\tCheck your input?"
 
-    for filename in fasta_files:  #select the files, process them one by one
+    for filename in fasta_files:
 
         species_association = {}
 
@@ -119,7 +119,7 @@ def prepare_fasta_input(arg):
                 # if not, add it to the list of irregular proteins
                 irregular_proteins.append(cds_seq)
                 if arg.verbose:
-                    print(f"Irregular sequence, doesn't start with canonical 'ATG' start codon: {cds_seq.id}")
+                    print(f"Warning: irregular sequence, doesn't start with canonical 'ATG' start codon: {cds_seq.id}")
 
             # Create and assign a unique gene tag to the entry, to avoid ambiguity
             random_code = binascii.hexlify(os.urandom(10)).decode('utf8')
@@ -761,7 +761,7 @@ def getMeanDist(comp):
 
 def getHGT(matrix, gene_association):
     """
-    Main function to identify potential HGT events between species.
+    Transform a dataframe adding the HGT bool variable; Main function to identify potential HGT events between species.
     
     Parameters:
     -----------
@@ -774,18 +774,33 @@ def getHGT(matrix, gene_association):
             A dataframe with the `HGT` column added, containing the HGT score for each gene pair.
     """
 
+    # format the pd.DataFrame from list
     matrix2 = append_species(matrix, gene_association)
 
-    # format the pd.DataFrame from list
-    matrix2 = matrix2[matrix2['dist'] != "NA"]  # remove NAs
+    # remove NAs
+    matrix2 = matrix2[matrix2['dist'] != "NA"]  
     matrix2['dist'] = pd.to_numeric(matrix2['dist'], downcast='float')
-    matrix2['HGT'] = None  # initialize an empty column for the HGT score
+    
+    # initialize an empty column for the HGT score
+    matrix2['HGT'] = None  
     sp_pairs = matrix2['species'].unique()
 
-    for sp in sp_pairs: #TODO implement z-test here
-        threshold = matrix2[matrix2['species'] == sp]['dist'].quantile(.05)  # get the 5th percentile of the distance.
-        matrix2.loc[matrix2['species'] == sp, 'HGT'] = matrix2[
-                                                           'dist'] < threshold  # set the 'HGT' variable to True if the distance is less than the threshold
+
+    # Z test implementation
+    import scipy.stats as stats
+
+    if False:
+        for sp in sp_pairs:
+            sp_matrix = matrix2[matrix2['species'] == sp]
+            sp_matrix['dist_zscore'] = stats.zscore(matrix2['dist'])
+            matrix2.loc[matrix2['species'] == sp, 'HGT'] = sp_matrix['dist_zscore'] <= -1.96
+
+    for sp in sp_pairs: 
+        # get the 5th percentile of the distance.
+        threshold = matrix2[matrix2['species'] == sp]['dist'].quantile(.05)  
+
+        # set the 'HGT' variable to True if the distance is less than the threshold
+        matrix2.loc[matrix2['species'] == sp, 'HGT'] = matrix2['dist'] < threshold  
 
     return matrix2
 
@@ -929,11 +944,11 @@ def plotData(df):
                     hover_data=df.columns)
 
     return fig
-    #fig.show()
 
 def prepare_input(arg):
 
-    if arg.gffread: # Prepare the input files, coming in a .gff format
+    # Prepare the input files, coming in a .gff format
+    if arg.gffread: 
         prot_path, prot_all_file, cds_all_file, gene_association_file, irregular_proteins_file = prepare_gff_input(arg)
         gene_association = {}
         irregular_proteins = []
@@ -945,7 +960,8 @@ def prepare_input(arg):
             for i in f.readlines():
                 irregular_proteins.append(i.strip())
 
-    else: # Prepare the input files, coming in a .fasta genome format
+    # Prepare the input files, coming in a .fasta genome format
+    else: 
         prot_path, prot_all_file, cds_all_file, gene_association_file, irregular_proteins_file = prepare_fasta_input(arg)
         gene_association = {}
         irregular_proteins = []
@@ -965,7 +981,7 @@ if __name__ == "__main__":
 
     # Create a folder with date and time of the run to store the output
     current_date = datetime.now()
-    output_folder = os.path.join(arg.input, 'output', current_date.strftime("HGTResults_%d-%b-%Y_%H_%M_%S"))
+    output_folder = os.path.join(os.getcwd(), 'output', current_date.strftime("HGTResults_%d-%b-%Y_%H_%M_%S"))
 
     try:
         os.makedirs(output_folder)
@@ -1030,8 +1046,8 @@ if __name__ == "__main__":
 
     print("[+] KaKs Calculator run completed; checking topologies...")
 
-    list_topology = get_topology(
-        orthofinder_results_path)  # get the list of orthogroups with significantly different topology from that of the average species tree
+    # get the list of orthogroups with significantly different topology from that of the average species tree
+    list_topology = get_topology(orthofinder_results_path)
 
     # Create a Venn diagram of the criteria
     list_kaks = dist_matrix_kaks.loc[dist_matrix_kaks['HGT'] == True, 'OG'].to_list()
@@ -1049,6 +1065,24 @@ if __name__ == "__main__":
     if irregular_candidates:
         print(f"Warning: {len(irregular_candidates)} of them are found to be irregular sequences.")
 
+
+    # Go back to the original gene name from the ID introduced in the .gff file    
+    match = {}
+    for key, value in gene_association.items(): 
+        sp_name = value['species']
+        genID = value['id']
+        try:
+            genID = genID.split('ID=')[-1].split(";")[0]
+        except:
+            pass
+        mvalue = '_'.join([sp_name, genID])
+        match[f"gene_{key}"] = mvalue
+    
+    dist_matrix_kaks['gene_1'].map(match)
+    dist_matrix_kaks['gene_2'].map(match)
+    dist_matrix_tree['gene_1'].map(match)
+    dist_matrix_tree['gene_2'].map(match)
+
     # Merge the two dataframes on the gene pairs
     full_matrix = pd.merge(dist_matrix_kaks,
                            dist_matrix_tree[['gene_1', 'gene_2', 'dist', 'HGT']],
@@ -1058,8 +1092,11 @@ if __name__ == "__main__":
 
     # Reorder the dataframe and add the topology score
     full_matrix = full_matrix[['gene_1', 'gene_2', 'OG', 'species', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']]
-    full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(
-        int)  # add the topology score if the OG appears in `list_topology`
+    
+    # add the topology score if the OG appears in `list_topology`
+    full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(int)
+    
+    # add the irregular flag if the gene is in the list of irregular proteins
     mask = (full_matrix['gene_1'].isin(irregular_proteins)) | (full_matrix['gene_2'].isin(irregular_proteins))
     full_matrix['irregular'] = mask.astype(int)
 
@@ -1067,43 +1104,15 @@ if __name__ == "__main__":
     full_matrix['HGT'] = full_matrix['HGT_kaks'] + full_matrix['HGT_tree'] + full_matrix['HGT_topology']
     full_matrix.sort_values(by=['HGT'], inplace=True, ascending=False)
 
-    # Go back to the original gene name from the ID introduced in the .gff file
-    match = {}
-    for key, value in gene_association.items():
-        sp_name = value['species']
-        genID = value['id']
-        try:
-            genID = genID.split('ID=')[-1].split(";")[0]
-        except:
-            pass
-        mvalue = '_'.join([sp_name, genID])
-        match[f"gene_{key}"] = mvalue
-
-    full_matrix['gene_1'].map(match)
-    full_matrix['gene_2'].map(match)
-
-    print(full_matrix.head())
-
-    """
-    names = {}
-    for i in full_matrix['gene_1']:
-
-        if i in match:
-
-            names.append(match[i])
-    full_matrix['gene_1'] = names
-    """
-    plot_matrix = pd.concat([dist_matrix_kaks, dist_matrix_tree], axis=0)
+    print(full_matrix.head())    
 
     with open(os.path.join(output_folder, 'HGT_output.tsv'), 'x') as f:
         full_matrix.to_csv(f, sep='\t', index=False)
     with open(os.path.join(output_folder, 'Irregular_candidates.tsv'), 'x') as f:
         SeqIO.write(irregular_candidates, f, 'fasta')
-    with open(os.path.join(output_folder, 'plot_data.tsv'), 'x') as f:
-        plot_matrix.to_csv(f, sep='\t', index=False)
-    # with open(os.path.join(output_folder, "HGT_violins.png"), 'x') as f:
-    import plotly
 
-    # Create a dataframe with the HGT scores from the KaKs, tree, and topology analyses
+    # Create a dataframe suitable for plotting
+    import plotly
+    plot_matrix = pd.concat([dist_matrix_kaks, dist_matrix_tree], axis=0)
     fig = plotData(plot_matrix)
     plotly.offline.plot(fig, filename=os.path.join(output_folder, "HGT_violin_plots.png"))
