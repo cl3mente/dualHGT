@@ -76,8 +76,8 @@ def prepare_fasta_input(arg):
     """
 
     res_path = os.path.join(arg.input, "results")
-    prot_path = os.path.join(arg.input, 'prot')
-    cds_path = os.path.join(arg.input, 'cds')
+    prot_path = os.path.join(res_path, 'prot')
+    cds_path = os.path.join(res_path, 'cds')
 
     try:
         if not os.path.exists(res_path):
@@ -96,28 +96,27 @@ def prepare_fasta_input(arg):
     irregular_proteins = []
 
     # Retrieve the .fasta files, containing the CDS sequences, in the input directory
-    extensions = ('.fasta', '.faa', '.fa')
-    fasta_files = [f for f in os.listdir(arg.input) if f.endswith(extensions)]
+    extensions = ('.fasta', '.faa', '.fa', '.fna', '.fas')
+    fasta_files = [file.name for file in Path(arg.input).iterdir() if file.suffix in extensions]
 
     assert fasta_files, 'Error: No .fasta files found in your input directory. Only .fasta file formats accepted as input.'
-    assert len(fasta_files) % 2 == 0, "Error: expected 2 files per species \n\tCheck your input?"
 
     for filename in fasta_files:
 
         species_association = {}
 
         res_name = filename.split('.')[0]
-        res_cds_file = os.path.join(cds_path, f"{res_name}_cds_mod.fas")
-        res_prot_file = os.path.join(prot_path, f"{res_name}_prot_mod.faa")
+        res_cds_file = os.path.join(cds_path, f"{res_name}_cds_mod.fas_mod.fasta")
+        res_prot_file = os.path.join(prot_path, f"{res_name}_prot_mod.faa_mod.fasta")
 
         aa_seqlist = []
         cds_seqlist = []
 
-        for cds_seq in SeqIO.parse(filename, "fasta"):
+        for cds_seq in SeqIO.parse(os.path.join(arg.input, filename), "fasta"):
 
             if cds_seq.seq[0:3] != 'ATG': # Check if the sequence starts with the canonical start codon
                 # if not, add it to the list of irregular proteins
-                irregular_proteins.append(cds_seq)
+                irregular_proteins.append(str(cds_seq.id))
                 if arg.verbose:
                     print(f"Warning: irregular sequence, doesn't start with canonical 'ATG' start codon: {cds_seq.id}")
 
@@ -135,8 +134,8 @@ def prepare_fasta_input(arg):
             cds_seq.description = ''
 
             # Append to the seqlist files
-            aa_seqlist.append(cds_seq)
-            cds_seqlist.append(aa_seq)
+            aa_seqlist.append(aa_seq)
+            cds_seqlist.append(cds_seq)
 
             gene_association[random_code] = species_association  # TODO check if this is correct...
 
@@ -151,7 +150,7 @@ def prepare_fasta_input(arg):
     gene_association_file, irregular_proteins_file = create_g_ass_and_irr_prot_files(res_path, irregular_proteins, gene_association)
     cds_all_file, prot_all_file = create_collection_file(res_path)
 
-    return (res_path, prot_all_file, cds_all_file, gene_association_file, irregular_proteins_file)
+    return (prot_path, prot_all_file, cds_all_file, gene_association_file, irregular_proteins_file)
 
 def prepare_gff_input(arg):
     """
@@ -239,7 +238,7 @@ def create_collection_file(res_path):
     return cds_all_file, prot_all_file
 
 def pool_fastamod(pair: Tuple[Bio.SeqIO.SeqRecord, Bio.SeqIO.SeqRecord]) -> Tuple[
-    SeqRecord, SeqRecord, Dict, bool, str]:  # parlallelized function to modify the fasta files. checks
+    SeqRecord, SeqRecord, Dict, bool, str]:  # parallelized function to modify the fasta files.
 
     irregular = False
     gene_association = {}
@@ -1068,12 +1067,6 @@ if __name__ == "__main__":
     irregular_candidates = list(set([i for i in intersection if i in irregular_proteins]))
     print(f"\tWith {len(irregular_candidates)} of them in the irregular sequences collection.")
 
-
-    print("\ndist matrices (kaks and tree) before merge\n")
-    print(dist_matrix_kaks.head())
-    print(dist_matrix_tree.head())
-
-
     # Go back to the original gene name from the ID introduced in the .gff file
     match = {}
     for key, value in gene_association.items():
@@ -1093,9 +1086,6 @@ if __name__ == "__main__":
                            on=['gene_1', 'gene_2'],
                            suffixes=('_kaks', '_tree'))
 
-    print("fullmatrix before changes")
-    print(full_matrix.head())
-
     # Reorder the dataframe and add the topology score
     full_matrix = full_matrix[['gene_1', 'gene_2', 'OG', 'species', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']]
 
@@ -1110,19 +1100,10 @@ if __name__ == "__main__":
     full_matrix['HGT'] = full_matrix['HGT_kaks'] + full_matrix['HGT_tree'] + full_matrix['HGT_topology']
     full_matrix.sort_values(by=['HGT'], inplace=True, ascending=False)
 
-    print("fullmatrix after changes")
-    print(full_matrix.head())
-
     full_matrix['gene_1'] = full_matrix['gene_1'].map(match)
     full_matrix['gene_2'] = full_matrix['gene_2'].map(match)
 
-    print("fullmatrix after map match")
-    print(full_matrix.head())
 
-    with open(os.path.join(output_folder, 'HGT_output.tsv'), 'x') as f:
-        full_matrix.to_csv(f, sep='\t', index=False)
-    with open(os.path.join(output_folder, 'Irregular_candidates.tsv'), 'x') as f:
-        SeqIO.write(irregular_candidates, f, 'fasta')
 
     # Create a dataframe suitable for plotting
     import plotly
@@ -1131,3 +1112,12 @@ if __name__ == "__main__":
     plot_matrix['gene_2'] = plot_matrix['gene_2'].map(match)
     fig = plotData(plot_matrix)
     plotly.offline.plot(fig, filename=os.path.join(output_folder, "HGT_violin_plots.html"))
+
+    pvt = plot_matrix.pivot(index=['gene_1', 'gene_2'], columns='type', values='dist').reset_index()
+    pvt.dropna(inplace=True)
+    cmplt = pd.merge(pvt, plot_matrix[['gene_1', 'gene_2', 'OG', 'species']], on=['gene_1', 'gene_2'])
+
+    with open(os.path.join(output_folder, 'HGT_output.tsv'), 'x') as f:
+        cmplt.to_csv(f, sep='\t', index=False)
+    with open(os.path.join(output_folder, 'Irregular_candidates.tsv'), 'x') as f:
+        SeqIO.write(irregular_candidates, f, 'fasta')
