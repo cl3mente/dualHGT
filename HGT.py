@@ -103,8 +103,6 @@ def prepare_fasta_input(arg):
 
     for filename in fasta_files:
 
-        species_association = {}
-
         res_name = filename.split('.')[0]
         res_cds_file = os.path.join(cds_path, f"{res_name}_cds_mod.fas_mod.fasta")
         res_prot_file = os.path.join(prot_path, f"{res_name}_prot_mod.faa_mod.fasta")
@@ -114,11 +112,11 @@ def prepare_fasta_input(arg):
 
         for cds_seq in SeqIO.parse(os.path.join(arg.input, filename), "fasta"):
 
+            species_association = {}
+
             if cds_seq.seq[0:3] != 'ATG': # Check if the sequence starts with the canonical start codon
                 # if not, add it to the list of irregular proteins
                 irregular_proteins.append(str(cds_seq.id))
-                if arg.verbose:
-                    print(f"Warning: irregular sequence, doesn't start with canonical 'ATG' start codon: {cds_seq.id}")
 
             # Create and assign a unique gene tag to the entry, to avoid ambiguity
             random_code = binascii.hexlify(os.urandom(10)).decode('utf8')
@@ -1103,21 +1101,43 @@ if __name__ == "__main__":
     full_matrix['gene_1'] = full_matrix['gene_1'].map(match)
     full_matrix['gene_2'] = full_matrix['gene_2'].map(match)
 
+    with open(os.path.join(output_folder,'full_matrix.tsv'), 'x') as fm:
+        full_matrix.to_csv(fm, sep='\t', index=False)
+
 
 
     # Create a dataframe suitable for plotting
     import plotly
     plot_matrix = pd.concat([dist_matrix_kaks, dist_matrix_tree], axis=0)
-    plot_matrix['gene_1'] = plot_matrix['gene_1'].map(match)
-    plot_matrix['gene_2'] = plot_matrix['gene_2'].map(match)
+
     fig = plotData(plot_matrix)
     plotly.offline.plot(fig, filename=os.path.join(output_folder, "HGT_violin_plots.html"))
 
-    pvt = plot_matrix.pivot(index=['gene_1', 'gene_2'], columns='type', values='dist').reset_index()
+    pvt = plot_matrix.pivot(index=['gene_1', 'gene_2'],
+                            columns='type',
+                            values=['dist', 'HGT']).reset_index()
+    pvt.columns = pvt.columns.droplevel(0)
+    pvt.columns = ['gene_1', 'gene_2', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']
     pvt.dropna(inplace=True)
-    cmplt = pd.merge(pvt, plot_matrix[['gene_1', 'gene_2', 'OG', 'species']], on=['gene_1', 'gene_2'])
+    cmplt = pd.merge(pvt, plot_matrix[['gene_1', 'gene_2', 'OG', 'species']].reset_index(), on=['gene_1', 'gene_2'])
 
-    with open(os.path.join(output_folder, 'HGT_output.tsv'), 'x') as f:
+    cmplt = cmplt[['gene_1', 'gene_2', 'OG', 'species', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']]
+
+    cmplt['HGT_topology'] = cmplt['OG'].isin(list_topology).astype(int)
+
+    # add the irregular flag if the gene is in the list of irregular proteins
+    mask = (cmplt['gene_1'].isin(irregular_proteins)) | (cmplt['gene_2'].isin(irregular_proteins))
+    cmplt['irregular'] = mask.astype(int)
+
+    # compute the final HGT score and sort the dataframe
+    cmplt['HGT'] = cmplt['HGT_kaks'] + cmplt['HGT_tree'] + cmplt['HGT_topology']
+    cmplt.sort_values(by=['HGT'], inplace=True, ascending=False)
+
+    cmplt['gene_1'] = cmplt['gene_1'].map(match)
+    cmplt['gene_2'] = cmplt['gene_2'].map(match)
+
+    with open(os.path.join(output_folder, 'cmplt.tsv'), 'x') as f:
         cmplt.to_csv(f, sep='\t', index=False)
-    with open(os.path.join(output_folder, 'Irregular_candidates.tsv'), 'x') as f:
-        SeqIO.write(irregular_candidates, f, 'fasta')
+    if irregular_candidates:
+        with open(os.path.join(output_folder, 'Irregular_candidates.tsv'), 'x') as f:
+            SeqIO.write(irregular_candidates, f, 'fasta')
