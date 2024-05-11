@@ -116,7 +116,7 @@ def prepare_fasta_input(arg):
             random_name = f"gene_{random_code}"
 
             # Translate the CDS into a protein sequence
-            aa_seq = cds_seq.translate(id=random_name, description='')
+            aa_seq = cds_seq.translate(id=random_name, description='', to_stop=True)
 
             # Save the gene tag and the original gene name in a dictionary
             species_association['id'] = cds_seq.id
@@ -633,12 +633,7 @@ def parseKaKs(arg, ResultsPath, proteinfilefinal, cdsfilefinal):
     cdsfilefinal = os.path.join(os.getcwd(), cdsfilefinal)
 
     runparaAT = PARAAT % (file_out, proteinfilefinal, cdsfilefinal, file_threads, kaksfolder)
-    # print(f"Running {runparaAT}...")
-    print(file_out)
-    print(proteinfilefinal)
-    print(cdsfilefinal)
-    print(file_threads)
-    print(kaksfolder)
+    print(f"Running {runparaAT}...")
 
     run = subprocess.Popen(runparaAT, shell=True, cwd=ResultsPath, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = run.communicate()
@@ -663,15 +658,19 @@ def parseKaKs(arg, ResultsPath, proteinfilefinal, cdsfilefinal):
         with mp.Pool(arg.numberThreads) as p:
             with tqdm.tqdm(total=len(axtFiles), desc="Running KaKs Calculator...") as pbar:
                 for x in p.imap_unordered(kaksparallel, axtFiles):
+                    
                     # x is a list that looks like this:
                     #   ['seq_(pair?)_name', 'Ks']
+
                     var.append(x)
+
                     # therefore var will be a list of lists:
                     #   [
                     #       ['seq_(pair?)_name1', 'Ks'],
                     #       ['seq_(pair?)_name2', 'Ks'],
                     #       ...
                     #   ]
+
                     pbar.update()
 
     # create a 'distances' list with KaKs score and the gene pairs.
@@ -1023,35 +1022,6 @@ if __name__ == "__main__":
             pass
         mvalue = '_'.join([sp_name, genID])
         match[f"gene_{key}"] = mvalue
-
-    # Merge the two dataframes on the gene pairs
-    full_matrix = pd.merge(dist_matrix_kaks,
-                           dist_matrix_tree[['gene_1', 'gene_2', 'dist', 'HGT']],
-                           how='inner',
-                           on=['gene_1', 'gene_2'],
-                           suffixes=('_kaks', '_tree'))
-
-    # Reorder the dataframe and add the topology score
-    full_matrix = full_matrix[['gene_1', 'gene_2', 'OG', 'species', 'dist_kaks', 'dist_tree', 'HGT_kaks', 'HGT_tree']]
-
-    # add the topology score if the OG appears in `list_topology`
-    full_matrix['HGT_topology'] = full_matrix['OG'].isin(list_topology).astype(int)
-
-    # add the irregular flag if the gene is in the list of irregular proteins
-    mask = (full_matrix['gene_1'].isin(irregular_proteins)) | (full_matrix['gene_2'].isin(irregular_proteins))
-    full_matrix['irregular'] = mask.astype(int)
-
-    # compute the final HGT score and sort the dataframe
-    full_matrix['HGT'] = full_matrix['HGT_kaks'] + full_matrix['HGT_tree'] + full_matrix['HGT_topology']
-    full_matrix.sort_values(by=['HGT'], inplace=True, ascending=False)
-
-    full_matrix['gene_1'] = full_matrix['gene_1'].map(match)
-    full_matrix['gene_2'] = full_matrix['gene_2'].map(match)
-
-    with open(os.path.join(output_folder,'full_matrix.tsv'), 'x') as fm:
-        full_matrix.to_csv(fm, sep='\t', index=False)
-
-
 
     # Create a dataframe suitable for plotting
     import plotly
