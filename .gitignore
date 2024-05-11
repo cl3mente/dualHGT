@@ -15,3 +15,7 @@
 /venv/
 /SCtest_*
 /Verticillium_test_data/
+/.idea/
+/dependencies/
+.gitignore
+.dockerignore
