@@ -16,7 +16,7 @@ import multiprocessing as mp
 import tqdm
 import pandas as pd
 import subprocess
-
+import sys
 from Bio.SeqRecord import SeqRecord
 from matplotlib_venn import venn3
 import numpy as np
@@ -25,13 +25,6 @@ import matplotlib.pyplot as plt
 import ete3
 from typing import Tuple, Dict
 
-#import gffutils
-
-# PARAAT = "ParaAT.pl  -h  %s  -a  %s  -n  %s   -p  %s  -o  %s -f axt"
-# KAKS = "KaKs_Calculator  -i %s -o %s -m %s"
-# ORTHOFINDER = "/data/bioinf2023/PlantPath2023/OrthoFinder/orthofinder -f %s -t %s -o %s %s"
-
-# Docker versions
 PARAAT = "ParaAT.pl -h %s -a %s -n %s -p %s -o %s -f axt -t -v"
 KAKS = "KaKs -i %s -o %s -m %s"
 ORTHOFINDER = "orthofinder -f %s -t %s -o %s %s"
@@ -786,71 +779,14 @@ def getHGT(matrix, gene_association):
     matrix2['HGT'] = None
     sp_pairs = matrix2['species'].unique()
 
-
-    # Z test implementation
-    import scipy.stats as stats
-
-    if False:
-        for sp in sp_pairs:
-            sp_matrix = matrix2[matrix2['species'] == sp]
-            sp_matrix['dist_zscore'] = stats.zscore(matrix2['dist'])
-            matrix2.loc[matrix2['species'] == sp, 'HGT'] = sp_matrix['dist_zscore'] <= -1.96
-
     for sp in sp_pairs:
         # get the 5th percentile of the distance.
         threshold = matrix2[matrix2['species'] == sp]['dist'].quantile(.05)
 
         # set the 'HGT' variable to True if the distance is less than the threshold
-        matrix2.loc[matrix2['species'] == sp, 'HGT'] = matrix2['dist'] < threshold
+        matrix2.loc[matrix2['species'] == sp, 'HGT'] = matrix2['dist'] <= threshold
 
     return matrix2
-
-    """ 
-    for key in new_dfs: 
-        # for each species pair create a dataframe
-        dataFrame = new_dfs[key]
-        threshold = dataFrame['dist'].quantile(.05) # get the 5th percentile of the distance.
-
-        # in the species dataframe, create the 'set' column 
-        # the 'set' variable is informative of whether a candidate HGT event
-        dataFrame["HGT"] = dataFrame['dist' < threshold]
-        distMatrix3 = dataFrame[dataFrame['dist'] < threshold]
-
-        list_value =distMatrix3.values.tolist()
-
-        if key in dict_dataframes:
-            dict_dataframes[key] = dict_dataframes[key] + [list_value]
-        else:
-            dict_dataframes[key] = [list_value]
-
-        data = dataFrame[["OG", "HGT"]]
-        data = data.sort_values(by=["HGT"])
-        data["HGT"] = data["HGT"].astype(int)
-        dataconcatenate.concat(dataFrame)
-
-        true_false_dict = data.set_index("OG")["HGT"].to_dict() 
-
-    kaks_table= []
-    tree_table = []
-    for key in dict_dataframes:
-        if len(dict_dataframes[key]) == 2:
-            species1 = dict_dataframes[key][0]
-            species2 = dict_dataframes[key][1]
-            for line in species1:
-                for res in species2:
-                    if line[0] in res:
-                        kaks_table.append(line)
-                        tree_table.append(res)
-    """
-    """
-     dist_ks = pd.DataFrame(kaks_table,
-                               columns=["gene_1", "gene_2", "dist", "OG", "type", "species"])
-    dist_ks_sorted = dist_ks.sort_values(by='dist')
-
-    dist_tree = pd.DataFrame(tree_table,
-                               columns=["gene_1", "gene_2", "dist", "OG", "type", "species"])
-    dist_tree_sorted = dist_tree.sort_values(by='dist') 
-    """
 
 def get_topology(ResultsPath):
     """
@@ -988,6 +924,17 @@ if __name__ == "__main__":
         os.makedirs(output_folder)
     except FileExistsError:
         print(f"Folder '{output_folder}' already exists. Wait a second??")
+
+    logfile = os.path.join(output_folder, 'log.txt')
+    logfile = open(logfile, 'w')
+
+    def write_and_log(msg):
+        sys.stdout.write(msg)
+        logfile.write(msg)
+        logfile.flush()
+
+    sys.stdout = write_and_log
+    sys.stderr = write_and_log
 
     results_path = os.path.join(os.getcwd(), 'input', 'results')
 
@@ -1141,3 +1088,5 @@ if __name__ == "__main__":
     if irregular_candidates:
         with open(os.path.join(output_folder, 'Irregular_candidates.tsv'), 'x') as f:
             SeqIO.write(irregular_candidates, f, 'fasta')
+
+    logfile.close()
