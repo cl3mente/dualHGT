@@ -1,4 +1,0 @@
-0: GCF_000027325.1_ASM2732v1_genomic.protein.faa
-1: GCF_000286675.1_ASM28667v1_genomic.protein.faa
-2: GCF_000400855.1_ASM40085v1_genomic.protein.faa
-3: GCF_009150585.1_ASM915058v1_genomic.protein.faa

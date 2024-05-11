@@ -19,12 +19,14 @@ bind-mount the directory containing your input folder to a specified input folde
 
 ## Arguments
 
-`-i or --input`: This argument is used to specify the input directory. The input directory should contain both a reference file and an annotation file with the same root.
+`-i or --input`: This argument is used to specify the input directory. 
+
+`-gff`: A flag specifying whether the input directory contains:
+ - FLAG ON: a reference genome .fasta and an annotation .gff with the same root for each species selected (for this)
+ - FLAG OFF (default): multifasta files with protein sequences of the species selected
 
 `-OFr or --orthofinderResults`: This argument is optional and allows you to specify the OrthoFinder results file.
 
 `-v or --verbose`: Verbose mode.
 
-`-nt or --numberThreads`: The number of parallel threads to use.
-
-`-o or --output`: Specifies the output directory. By default, the output will be saved in a directory named "output".
+`-nt or --numberThreads`: The number of threads to use for the analysis.

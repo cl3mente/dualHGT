@@ -1,0 +1,5 @@
+setup.py
+dualHGT.egg-info/PKG-INFO
+dualHGT.egg-info/SOURCES.txt
+dualHGT.egg-info/dependency_links.txt
+dualHGT.egg-info/top_level.txt
