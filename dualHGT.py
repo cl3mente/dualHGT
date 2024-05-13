@@ -535,7 +535,7 @@ def kaksparallel(file: str) -> list:
     if not os.path.exists(output) or not os.path.getsize(output) > 0:
         runkaks = KAKS % (file,  #the .axt file passed as input
                           output,  # the output file
-                          "NG")  # NG is the model used for the calculation
+                          "MA")  # NG is the model used for the calculation
         run = subprocess.Popen(runkaks, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
 
         out, err = run.communicate()
@@ -557,7 +557,7 @@ def read_kaks_file(kaks_filename: str) -> list:
             if line.strip():
                 # take the first and fourth elements of the file
                 # corresponding to the sequence name and the Ks value
-                list_entry = [line.split('\t')[i] for i in [0, 3]]
+                list_entry = [line.split('\t')[i] for i in [0, 4]]
     return list_entry
 
 def parseKaKs(arg, ResultsPath, proteinfilefinal, cdsfilefinal):
