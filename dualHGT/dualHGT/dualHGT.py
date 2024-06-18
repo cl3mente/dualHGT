@@ -535,7 +535,7 @@ def kaksparallel(file: str) -> list:
     if not os.path.exists(output) or not os.path.getsize(output) > 0:
         runkaks = KAKS % (file,  #the .axt file passed as input
                           output,  # the output file
-                          "NG")  # NG is the model used for the calculation
+                          "MA")  # Model Averaging is used for the calculation
         run = subprocess.Popen(runkaks, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
 
         out, err = run.communicate()
@@ -771,7 +771,8 @@ def getHGT(matrix, gene_association):
     matrix2 = append_species(matrix, gene_association)
 
     # remove NAs
-    matrix2 = matrix2[matrix2['dist'] != "NA"]
+    # matrix2 = matrix2[matrix2['dist'] != "NA"]
+    matrix2[matrix2['dist'] == "NA"] = 0
     matrix2['dist'] = pd.to_numeric(matrix2['dist'], downcast='float')
 
     # initialize an empty column for the HGT score

@@ -771,7 +771,9 @@ def getHGT(matrix, gene_association):
     matrix2 = append_species(matrix, gene_association)
 
     # remove NAs
-    matrix2 = matrix2[matrix2['dist'] != "NA"]
+    #matrix2 = matrix2[matrix2['dist'] != "NA"]
+    matrix2[matrix2['dist'] == "NA"] = 0
+
     matrix2['dist'] = pd.to_numeric(matrix2['dist'], downcast='float')
 
     # initialize an empty column for the HGT score
@@ -924,7 +926,7 @@ if __name__ == "__main__":
     except FileExistsError:
         print(f"Folder '{output_folder}' already exists. Wait a second??")
 
-    logfile = os.path.join(output_folder, 'log.txt')
+    logfile = os.path.join(output_folder, f'log_{current_date}.txt')
     logfile = open(logfile, 'w')
 
     def write_and_log(msg):

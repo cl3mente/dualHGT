@@ -75,13 +75,15 @@ RUN apt-get install -y locate libc6 muscle
 #USER appuser
 
 # Copy the source code into the container.
-COPY . .
+RUN git clone https://github.com/cl3mente/PlantPath2023.git
+
+RUN cp -f /app/PlantPath2023/ParaAT.pl /app/ParaAT2.0/ParaAT.pl
 
 ENV PATH=$PATH:/app/KaKs_Calculator3.0/src:/app/ParaAT2.0:/app/OrthoFinder
 
 RUN mkdir input
 
-RUN cp -f /app/ParaAT.pl /app/ParaAT2.0/ParaAT.pl
+
 
 VOLUME /app/input
 # CMD python HGT.py -i /data/bioinf2023/PlantPath2023/genomeANDgff -OFr /data/bioinf2023/PlantPath2023/genomeANDgff/results/prot/f7b812/Results_Feb23  -v -nt 50
