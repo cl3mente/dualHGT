@@ -771,7 +771,9 @@ def getHGT(matrix, gene_association):
     matrix2 = append_species(matrix, gene_association)
 
     # remove NAs
-    matrix2 = matrix2[matrix2['dist'] != "NA"]
+    #matrix2 = matrix2[matrix2['dist'] != "NA"]
+    matrix2[matrix2['dist'] == "NA"] = 0
+
     matrix2['dist'] = pd.to_numeric(matrix2['dist'], downcast='float')
 
     # initialize an empty column for the HGT score
