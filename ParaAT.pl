@@ -506,6 +506,7 @@ sub RunMultiProcesses {
         $CmdCount++;
         
         #Read the current number of processors, which can be changeable at running time
+
         $num = ReadThreadNumber($maxnum, $ProcessFile);
         
         #Compare the current number of processors with that obtained from the configration file
@@ -688,7 +689,7 @@ sub ReadThreadNumber(){
 	my ($current, $con_file) = @_;
 	
 	my $threads = $current;
-	$con_file = "../".$con_file;
+	$con_file = $con_file;
 	
 	my @config = &ReadFile($con_file);
 	if (@config) {
