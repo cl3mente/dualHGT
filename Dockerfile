@@ -22,7 +22,8 @@ RUN apt-get update && apt-get install -y \
     gffread \
     sudo \
     g++ \
-    make
+    make \
+    git
 
 RUN apt-get install -y python3
 
@@ -82,8 +83,6 @@ RUN cp -f /app/PlantPath2023/ParaAT.pl /app/ParaAT2.0/ParaAT.pl
 ENV PATH=$PATH:/app/KaKs_Calculator3.0/src:/app/ParaAT2.0:/app/OrthoFinder
 
 RUN mkdir input
-
-
 
 VOLUME /app/input
 # CMD python HGT.py -i /data/bioinf2023/PlantPath2023/genomeANDgff -OFr /data/bioinf2023/PlantPath2023/genomeANDgff/results/prot/f7b812/Results_Feb23  -v -nt 50
