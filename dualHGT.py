@@ -926,7 +926,7 @@ if __name__ == "__main__":
     except FileExistsError:
         print(f"Folder '{output_folder}' already exists. Wait a second??")
 
-    logfile = os.path.join(output_folder, 'log.txt')
+    logfile = os.path.join(output_folder, f'log_{current_date}.txt')
     logfile = open(logfile, 'w')
 
     def write_and_log(msg):
