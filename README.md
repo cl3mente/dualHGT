@@ -1,3 +1,5 @@
+![Docker Image Version](https://img.shields.io/docker/v/cl3mente/dualhgt?sort=date&logo=docker&logoColor=white)
+
 # HGT finder tool
 
 ## Workflow
