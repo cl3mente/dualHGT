@@ -1,8 +1,6 @@
+# HGT finder tool
 ![Docker Image Version](https://img.shields.io/docker/v/cl3mente/dualhgt?sort=date&logo=docker&logoColor=white)
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/t/cl3mente/dualHGT?logo=github&logoColor=black&labelColor=white&color=gray)
-
-
-# HGT finder tool
 
 ## Workflow
 
