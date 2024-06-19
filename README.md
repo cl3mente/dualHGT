@@ -11,6 +11,7 @@ The distances that fall below the 5th quantile of the distribution will be marke
 ## Usage:
 ### DockerHub pull:
 Run this in your terminal to pull a pre-made image from DockerHub:
+
 `docker pull cl3mente/dualHGT:latest`
 
 After the pull is complete, you will have a working image that you can use to run dualHGT on a container - specify your local input folder binding it to an _'input'_ volume in the container:
