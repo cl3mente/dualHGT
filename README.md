@@ -14,13 +14,16 @@ Run this in your terminal to pull a pre-made image from DockerHub:
 `docker pull cl3mente/dualHGT:latest`
 
 After the pull is complete, you will have a working image that you can use to run dualHGT on a container - specify your local input folder binding it to an _'input'_ volume in the container:
+
 `docker run -v your-input-folder/:/app/input cl3mente/dualhgt:latest`
 
 Alternatively, run this command from the folder itself:
+
 `docker run -v $PWD/:/app/input cl3mente/dualhgt:latest`
 
 This folder will be the channel for Docker to communicate with your local machine. This is where the results will be written, in the _'output'_ subfolder.
 Once you run the container, run the dualHGT.py script with this command and the other options that you might want to customize:
+
 `python dualHGT.py -i input/ [...]`
 
 ### Additional arguments
