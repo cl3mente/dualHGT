@@ -1,6 +1,6 @@
 # HGT finder tool
 ![Static Badge](https://img.shields.io/badge/DockerHub-dualHGT-gray?style=flat&logo=docker&logoColor=white&labelColor=blue&link=https%3A%2F%2Fhub.docker.com%2Frepository%2Fdocker%2Fcl3mente%2Fdualhgt%2Fgeneral)
-![GitHub commit activity](https://img.shields.io/github/commit-activity/t/cl3mente/dualHGT?logo=github&logoColor=black&labelColor=white&color=gray)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/t/cl3mente/dualHGT?logo=github&logoColor=black&labelColor=white&color=gray)(https://github.com/cl3mente/dualHGT/)
 
 ## Workflow
 
