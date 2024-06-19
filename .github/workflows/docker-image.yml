@@ -15,7 +15,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag dualhgt:latest # $(date +%s)
+      run: |
+        docker build --tag cl3mente/dualhgt:latest -t cl3mente/dualhgt:${{ github.sha }}. # $(date +%s)
     - 
       name: Login to Docker Hub
       uses: docker/login-action@v3
