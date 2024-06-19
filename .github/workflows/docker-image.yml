@@ -24,6 +24,5 @@ jobs:
         password: ${{ secrets.DOCKER_TOKEN }}
     - name: Push the Docker image
       run: |
-        docker push dualhgt:latest
-        docker push dualhgt:$(date +%s)
-        docker push dualhgt:${{ github.sha }}
+        docker push cl3mente/dualhgt:latest  # docker push dualhgt:$(date +%s)
+        docker push cl3mente/dualhgt:${{ github.sha }}
