@@ -6,18 +6,22 @@ The files will be processed by Orthofinder ([Emms, D.M., Kelly, S. 2019](https:/
 Both this programs will provide values of distance between proteins of the same orthogroup (inferred by Orthofinder).
 The distances that fall below the 5th quantile of the distribution will be marked for further inspection, which is made on the topology of the tree. Gene trees that diverge significantly from the inferred species tree are marked as candidates for HGT.
 
-## Required input files:
-the script needs protein sequences and their corresponding coding sequences from the investigated organism group.
-The folder containing both files is passed to the program with the `-i (or --input)` argument.
-It's also possible to pass a folder with previous Orthofinder results to the program to avoid multiple time-consuming runs.
+## Usage:
+### DockerHub pull:
+Run this in your terminal to pull a pre-made image from DockerHub:
+`docker pull cl3mente/dualHGT:latest`
 
-Example run command:
+After the pull is complete, you will have a working image that you can use to run dualHGT on a container - specify your local input folder binding it to an _'input'_ volume in the container:
+`docker run -v your-input-folder/:/app/input cl3mente/dualhgt:latest`
 
-bind-mount the directory containing your input folder to a specified input folder in the container:
+Alternatively, run this command from the folder itself:
+`docker run -v $PWD/:/app/input cl3mente/dualhgt:latest`
 
-`docker run -v $PWD/:/app/input cl3mente/finalhgt -i input -nt [...]`
+This folder will be the channel for Docker to communicate with your local machine. This is where the results will be written, in the _'output'_ subfolder.
+Once you run the container, run the dualHGT.py script with this command and the other options that you might want to customize:
+`python dualHGT.py -i input/ [...]`
 
-## Arguments
+### Additional arguments
 
 `-i or --input`: This argument is used to specify the input directory. 
 
@@ -30,3 +34,7 @@ bind-mount the directory containing your input folder to a specified input folde
 `-v or --verbose`: Verbose mode.
 
 `-nt or --numberThreads`: The number of threads to use for the analysis.
+
+the script needs protein sequences and their corresponding coding sequences from the investigated organism group.
+The folder containing both files is passed to the program with the `-i (or --input)` argument.
+It's also possible to pass a folder with previous Orthofinder results to the program to avoid multiple time-consuming runs.
