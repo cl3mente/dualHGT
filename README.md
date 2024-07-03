@@ -23,7 +23,14 @@ Alternatively, run this command from the folder itself:
 `docker run -v $PWD/:/app/input cl3mente/dualhgt:latest`
 
 This folder will be the channel for Docker to communicate with your local machine. This is where the results will be written, in the _'output'_ subfolder.
-Once you run the container, run the dualHGT.py script with this command and the other options that you might want to customize:
+
+### GitHub clone:
+Although not suggested, you can simply clone this repository and make sure every dependency is installed.
+
+`git clone www.github.com/cl3mente/dualHGT`
+
+### Run the software:
+Once you run the container, or have the dualHGT.py script available, run it with this command and the other options that you might want to customize:
 
 `python dualHGT.py -i input/ [...]`
 
